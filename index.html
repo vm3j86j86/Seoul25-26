@@ -14,6 +14,13 @@
     <!-- Panzoom Library -->
     <script src="https://unpkg.com/@panzoom/panzoom@4.5.1/dist/panzoom.min.js"></script>
     
+    <!-- PDF.js Library (For rendering PDF as Canvas) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        // 設定 PDF.js Worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    
     <!-- Icons & Fonts -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
@@ -79,15 +86,19 @@
 
         /* Zoom Container */
         #subway-panzoom-container { will-change: transform; cursor: grab; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
-        /* 確保圖片本身可以被高品質縮放 */
-        #subway-panzoom-container img { 
+        /* 確保圖片和Canvas都能被高品質縮放 */
+        #subway-panzoom-container img, 
+        #subway-panzoom-container canvas { 
             width: 100%; 
             height: auto; 
             object-fit: contain; 
             pointer-events: none; 
-            max-width: none; /* 允許圖片超過容器以便縮放 */
+            max-width: none; 
         }
         #subway-panzoom-container:active { cursor: grabbing; }
+        
+        /* Loading Overlay for PDF */
+        .pdf-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.8); z-index: 30; }
     </style>
 </head>
 <body>
@@ -105,7 +116,6 @@
         <div class="flex-1 bg-gray-50 relative overflow-hidden flex items-center justify-center w-full select-none"
              :class="{'cursor-crosshair-custom': isAddingMode}">
             
-            <!-- Map Wrapper: Inline-block adapts to image size so pins stick correctly -->
             <div class="relative inline-block" 
                  ref="mapContentRef"
                  @click="handleMapClick"
@@ -115,13 +125,11 @@
                  @touchend="handleContainerEnd"
                  @mouseleave="handleContainerEnd">
                 
-                <!-- Map Image: Max dimensions ensure it fits within the flex area without scrolling -->
                 <img src="map.png" 
                      class="max-w-full max-h-[55vh] w-auto h-auto block pointer-events-none shadow-sm" 
                      alt="Seoul Map" 
                      onerror="this.src='https://placehold.co/600x800/png?text=Seoul+Map'">
                 
-                <!-- Pins -->
                 <div v-for="spot in spots" :key="spot.id"
                      class="pin-marker"
                      :class="[`pin-theme-${spot.theme}`, isDraggingSpotId === spot.id ? 'pin-dragging' : 'animate-bounce-soft']"
@@ -143,21 +151,32 @@
             </div>
         </div>
 
-        <!-- SECTION 2: Subway Area (Fixed Height, Zoomable) -->
+        <!-- SECTION 2: Subway Area (Fixed Height, Zoomable, Supports PDF) -->
         <div class="h-[40vh] w-full bg-gray-100 overflow-hidden relative border-t border-gray-200 z-10">
+            
+            <!-- Loading Indicator -->
+            <div v-if="isPdfLoading" class="pdf-loading">
+                <div class="text-pink-500 font-bold text-sm flex flex-col items-center">
+                    <i class="fas fa-circle-notch fa-spin text-2xl mb-2"></i>
+                    載入地鐵圖中...
+                </div>
+            </div>
+
             <!-- Panzoom Container -->
             <div id="subway-panzoom-container">
-                <!-- 
-                   更改為高解析度圖片來源 (Wikimedia Commons) 
-                   如果讀取不到本地 subway.png，就會使用這個高解析度版本 
-                -->
-                <img src="subway.pdf" 
+                <!-- Canvas for PDF Render -->
+                <canvas v-show="usePdf" id="pdf-canvas"></canvas>
+                
+                <!-- Fallback Image (shown if PDF fails or not used) -->
+                <img v-show="!usePdf" 
+                     src="subway.png" 
                      alt="Subway Map" 
-                     onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/Seoul_Metro_Line_Map_en.svg/2560px-Seoul_Metro_Line_Map_en.svg.png'">
+                     @error="handleImgError"
+                     ref="fallbackImgRef">
             </div>
         </div>
 
-        <!-- Modals (Overlay) -->
+        <!-- Modals (Overlay) - Same as before -->
         <!-- 1. Quick Add -->
         <transition name="modal">
             <div v-if="showQuickAddModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-5" @click.self="cancelQuickAdd">
@@ -236,7 +255,7 @@
 </div>
 
 <script>
-    const { createApp, ref, reactive, onMounted } = Vue;
+    const { createApp, ref, reactive, onMounted, nextTick } = Vue;
     createApp({
         setup() {
             const spots = ref([]);
@@ -253,7 +272,6 @@
             const tempImageUrl = ref('');
             const mapContentRef = ref(null);
             const tempCoords = ref(null);
-            let subwayPanzoom = null;
             const isDraggingSpotId = ref(null);
             let longPressTimer = null;
             let startX = 0, startY = 0;
@@ -261,11 +279,64 @@
             const LONG_PRESS_DURATION = 200; 
             const touchStartX = ref(0);
             const touchEndX = ref(0);
+            
+            // PDF & Panzoom State
+            let subwayPanzoom = null;
+            const usePdf = ref(false);
+            const isPdfLoading = ref(true);
+            const fallbackImgRef = ref(null);
+
+            // PDF Rendering Logic
+            const renderPdf = async () => {
+                const url = 'subway.pdf';
+                const canvas = document.getElementById('pdf-canvas');
+                if (!canvas) return;
+
+                try {
+                    const loadingTask = pdfjsLib.getDocument(url);
+                    const pdf = await loadingTask.promise;
+                    const page = await pdf.getPage(1);
+                    
+                    // High resolution scale
+                    const scale = 3.0; 
+                    const viewport = page.getViewport({ scale: scale });
+                    
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    const renderContext = {
+                        canvasContext: context,
+                        viewport: viewport
+                    };
+                    
+                    await page.render(renderContext).promise;
+                    usePdf.value = true;
+                    isPdfLoading.value = false;
+                    
+                    // Init panzoom AFTER render
+                    nextTick(initSubwayPanzoom);
+                } catch (error) {
+                    console.error('Error rendering PDF, switching to image fallback:', error);
+                    usePdf.value = false;
+                    isPdfLoading.value = false;
+                    // Init panzoom on image
+                    nextTick(initSubwayPanzoom);
+                }
+            };
+            
+            const handleImgError = (e) => {
+                // Fallback to high-res Wikipedia image if local image fails
+                e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/Seoul_Metro_Line_Map_en.svg/2560px-Seoul_Metro_Line_Map_en.svg.png';
+            };
 
             const initSubwayPanzoom = () => {
                 const elem = document.getElementById('subway-panzoom-container');
                 if (!elem) return;
+                
+                // If panzoom exists, destroy it first to avoid conflicts
                 if (subwayPanzoom) subwayPanzoom.destroy();
+                
                 subwayPanzoom = Panzoom(elem, {
                     maxScale: 6, minScale: 1, startScale: 1, contain: 'outside', cursor: 'default', 
                     touchAction: 'none' // Critical for gesture support
@@ -276,11 +347,12 @@
             onMounted(() => {
                 const savedData = localStorage.getItem('seoul_travel_app_data');
                 if (savedData) spots.value = JSON.parse(savedData);
-                // Delay init to ensure layout settles
-                setTimeout(initSubwayPanzoom, 100);
+                
+                // Try rendering PDF first
+                renderPdf();
             });
 
-            // Coords logic adjusted for the new centered inline-block wrapper
+            // Coords logic
             const getEventCoords = (e) => {
                 if (e.touches && e.touches.length > 0) return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
                 return { clientX: e.clientX, clientY: e.clientY };
@@ -414,7 +486,8 @@
                 spots, isAddingMode, isProcessingImage, showQuickAddModal, quickForm, showDetailModal, detailForm, isEditingDetail, selectedSpot, currentSpotIndex, fileInput, mapContentRef, isDraggingSpotId,
                 toggleAddMode, handleMapClick, handlePinStart, handleContainerMove, handleContainerEnd, handlePinClick,
                 cancelQuickAdd, confirmQuickAdd, closeDetailModal, startEditing, cancelEditing, saveDetailChanges, deleteSpot,
-                handleFileUpload, getColorCode, getCategoryIcon, getCategoryName, getCategoryColorClass, handleSwipeStart, handleSwipeEnd
+                handleFileUpload, getColorCode, getCategoryIcon, getCategoryName, getCategoryColorClass, handleSwipeStart, handleSwipeEnd,
+                usePdf, isPdfLoading, handleImgError, fallbackImgRef
             };
         }
     }).mount('#app');
