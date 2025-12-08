@@ -59,8 +59,16 @@
         /* 十字游標 (新增模式) */
         .cursor-crosshair-custom { cursor: crosshair; }
         
+        /* Modal Transitions */
         .modal-enter-active, .modal-leave-active { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        .modal-enter-from, .modal-leave-to { opacity: 0; transform: scale(0.9); }
+        .modal-enter-from, .modal-leave-to { opacity: 0; transform: scale(0.95); }
+
+        .slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s ease-out, opacity 0.3s ease; }
+        .slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); opacity: 0; }
+
+        /* Scrollbar hide */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body>
@@ -77,19 +85,12 @@
             <i class="fas fa-plus text-xl"></i>
         </button>
 
-        <!-- 已移除提示框 -->
-
         <!-- Map Layer -->
         <div class="relative w-full h-full bg-white overflow-hidden" id="scene-container">
             
             <div id="panzoom-area" class="w-full flex flex-col origin-top-left bg-white min-h-full">
                 
-                <!-- 
-                    地圖內容容器
-                    事件綁定：
-                    1. @click: 處理「新增模式」下的單擊新增
-                    2. @mousemove/touchmove/mouseup/touchend: 處理「長按後」的圖標拖曳
-                -->
+                <!-- 地圖內容容器 -->
                 <div id="map-content" 
                      class="relative w-full pb-20 select-none"
                      :class="{'cursor-crosshair-custom': isAddingMode}"
@@ -101,21 +102,12 @@
                      @touchend="handleContainerEnd"
                      @mouseleave="handleContainerEnd">
                     
-                    <!-- map.png -->
-                    <img src="map.png" class="w-full h-auto block pointer-events-none" alt="Seoul Map">
-                    
-                    <!-- 分隔線 -->
+                    <!-- Maps -->
+                    <img src="map.png" class="w-full h-auto block pointer-events-none" alt="Seoul Map" onerror="this.src='https://placehold.co/600x800/png?text=Map+Image'">
                     <div class="w-full h-2 bg-gray-100/50"></div>
+                    <img src="subway.png" class="w-full h-auto block pointer-events-none" alt="Subway Map" onerror="this.src='https://placehold.co/600x400/png?text=Subway+Image'">
 
-                    <!-- subway.png -->
-                    <img src="subway.png" class="w-full h-auto block pointer-events-none" alt="Korea Subway Map">
-
-                    <!-- Existing Pins -->
-                    <!-- 
-                        Pin 事件綁定：
-                        1. mousedown/touchstart: 開始偵測長按
-                        2. click: 處理單擊(詳情)/雙擊(編輯)，需檢查是否剛拖曳完
-                    -->
+                    <!-- Pins -->
                     <div v-for="spot in spots" :key="spot.id"
                          class="pin-marker"
                          :class="[`pin-theme-${spot.theme}`, isDraggingSpotId === spot.id ? 'pin-dragging' : 'animate-bounce-soft']"
@@ -141,42 +133,231 @@
 
         </div>
 
-        <!-- 通用彈窗 (新增/編輯) -->
+        <!-- 1. 快速新增 Modal (僅用於建立新點) -->
         <transition name="modal">
-            <div v-if="showModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-5" @click.self="cancelModal">
+            <div v-if="showQuickAddModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-5" @click.self="cancelQuickAdd">
                 <div class="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl transform transition-all">
-                    
-                    <h3 class="text-lg font-bold text-gray-800 mb-4 text-center">
-                        {{ isEditing ? '編輯地標' : '新增地標' }}
-                    </h3>
+                    <h3 class="text-lg font-bold text-gray-800 mb-4 text-center">新增地標</h3>
                     
                     <div class="space-y-4">
+                        <!-- 類別選擇 -->
                         <div>
                             <label class="text-xs font-bold text-gray-400 uppercase ml-1 block mb-2">類別</label>
                             <div class="flex gap-2">
-                                <button @click="quickForm.category = 'spot'" class="flex-1 py-2 rounded-xl text-xs font-bold border transition-colors flex flex-col items-center justify-center gap-1" :class="quickForm.category === 'spot' ? 'bg-pink-50 border-pink-200 text-pink-500' : 'border-gray-200 text-gray-400'"><i class="fas fa-camera text-sm"></i> 景點</button>
-                                <button @click="quickForm.category = 'food'" class="flex-1 py-2 rounded-xl text-xs font-bold border transition-colors flex flex-col items-center justify-center gap-1" :class="quickForm.category === 'food' ? 'bg-orange-50 border-orange-200 text-orange-500' : 'border-gray-200 text-gray-400'"><i class="fas fa-utensils text-sm"></i> 餐廳</button>
-                                <button @click="quickForm.category = 'shopping'" class="flex-1 py-2 rounded-xl text-xs font-bold border transition-colors flex flex-col items-center justify-center gap-1" :class="quickForm.category === 'shopping' ? 'bg-blue-50 border-blue-200 text-blue-500' : 'border-gray-200 text-gray-400'"><i class="fas fa-shopping-bag text-sm"></i> 購物</button>
+                                <button v-for="cat in ['spot', 'food', 'shopping']" 
+                                        :key="cat"
+                                        @click="quickForm.category = cat" 
+                                        class="flex-1 py-2 rounded-xl text-xs font-bold border transition-colors flex flex-col items-center justify-center gap-1" 
+                                        :class="quickForm.category === cat ? getCategoryColorClass(cat) : 'border-gray-200 text-gray-400'">
+                                    <i class="fas text-sm" :class="getCategoryIcon(cat)"></i>
+                                    {{ getCategoryName(cat) }}
+                                </button>
                             </div>
                         </div>
-                        <div><label class="text-xs font-bold text-gray-400 uppercase ml-1">名稱</label><input v-model="quickForm.name" type="text" placeholder="地點名稱" class="mt-1 w-full bg-gray-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"></div>
+                        
+                        <!-- 名稱輸入 -->
                         <div>
-                            <label class="text-xs font-bold text-gray-400 uppercase ml-1 block mb-2">顏色</label>
+                            <label class="text-xs font-bold text-gray-400 uppercase ml-1">名稱</label>
+                            <input v-model="quickForm.name" type="text" placeholder="輸入地點名稱..." class="mt-1 w-full bg-gray-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400">
+                        </div>
+
+                        <!-- 顏色選擇 -->
+                        <div>
+                            <label class="text-xs font-bold text-gray-400 uppercase ml-1 block mb-2">標籤顏色</label>
                             <div class="flex justify-between gap-2">
-                                <button v-for="color in ['pink', 'blue', 'green', 'yellow', 'purple']" :key="color" @click="quickForm.theme = color" class="w-8 h-8 rounded-full border-2 transition-transform active:scale-90" :class="[quickForm.theme === color ? 'border-gray-400 scale-110 shadow-sm' : 'border-transparent']" :style="{ backgroundColor: getColorCode(color) }"></button>
+                                <button v-for="color in ['pink', 'blue', 'green', 'yellow', 'purple']" 
+                                        :key="color" 
+                                        @click="quickForm.theme = color" 
+                                        class="w-8 h-8 rounded-full border-2 transition-transform active:scale-90" 
+                                        :class="[quickForm.theme === color ? 'border-gray-400 scale-110 shadow-sm' : 'border-transparent']" 
+                                        :style="{ backgroundColor: getColorCode(color) }">
+                                </button>
                             </div>
                         </div>
                     </div>
                     
                     <div class="flex gap-3 mt-6">
-                        <button v-if="isEditing" @click="deleteSpot" class="w-12 py-3 rounded-xl font-bold text-white bg-red-500 shadow-lg shadow-red-200 text-sm flex items-center justify-center">
-                            <i class="fas fa-trash-alt"></i>
+                        <button @click="cancelQuickAdd" class="flex-1 py-3 rounded-xl font-bold text-gray-500 bg-gray-100 text-sm">取消</button>
+                        <button @click="confirmQuickAdd" class="flex-1 py-3 rounded-xl font-bold text-white bg-pink-500 shadow-lg shadow-pink-200 text-sm" :disabled="!quickForm.name">
+                            建立
                         </button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- 2. 詳細資訊 / 編輯 Modal (點擊圖標後觸發) -->
+        <transition name="slide-up">
+            <div v-if="showDetailModal && selectedSpot" class="fixed inset-0 z-[70] flex flex-col justify-end sm:justify-center items-center bg-black/50 backdrop-blur-[2px]" @click.self="closeDetailModal">
+                
+                <div class="bg-white w-full max-w-[440px] max-h-[90vh] sm:max-h-[80vh] sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden transition-transform">
+                    
+                    <!-- Header Image Area -->
+                    <div class="relative h-48 sm:h-56 bg-gray-200 shrink-0">
+                        <!-- 圖片顯示 -->
+                        <img v-if="detailForm.images && detailForm.images.length > 0" 
+                             :src="detailForm.images[0]" 
+                             class="w-full h-full object-cover"
+                             onerror="this.style.display='none'">
                         
-                        <button @click="cancelModal" class="flex-1 py-3 rounded-xl font-bold text-gray-500 bg-gray-100 text-sm">取消</button>
-                        <button @click="confirmAction" class="flex-1 py-3 rounded-xl font-bold text-white bg-pink-500 shadow-lg shadow-pink-200 text-sm" :disabled="!quickForm.name">
-                            {{ isEditing ? '儲存' : '建立' }}
+                        <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-100">
+                            <i class="fas fa-image text-4xl mb-2 opacity-50"></i>
+                            <span class="text-xs font-bold">尚無圖片</span>
+                        </div>
+
+                        <!-- Close Btn -->
+                        <button @click="closeDetailModal" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 backdrop-blur text-white flex items-center justify-center hover:bg-black/50 transition">
+                            <i class="fas fa-times"></i>
                         </button>
+
+                        <!-- Category Badge -->
+                        <div class="absolute bottom-4 left-4 px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex items-center gap-1"
+                             :class="getCategoryBgClass(detailForm.category)">
+                            <i class="fas" :class="getCategoryIcon(detailForm.category)"></i>
+                            {{ getCategoryName(detailForm.category) }}
+                        </div>
+                    </div>
+
+                    <!-- Content Body -->
+                    <div class="flex-1 overflow-y-auto p-6 no-scrollbar">
+                        
+                        <!-- 檢視模式 View Mode -->
+                        <div v-if="!isEditingDetail" class="space-y-5">
+                            <div class="flex justify-between items-start">
+                                <h2 class="text-2xl font-bold text-gray-800 leading-tight">{{ detailForm.name }}</h2>
+                                <div class="w-4 h-4 rounded-full mt-2 shrink-0" :style="{ backgroundColor: getColorCode(detailForm.theme) }"></div>
+                            </div>
+
+                            <p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
+                                {{ detailForm.description || '這是一個很棒的地方，但還沒有詳細描述...' }}
+                            </p>
+
+                            <div class="space-y-3 pt-2">
+                                <div class="flex items-start gap-3 text-sm text-gray-600">
+                                    <i class="fas fa-clock w-5 text-center mt-1 text-gray-400"></i>
+                                    <div class="flex-1">{{ detailForm.hours || '營業時間未提供' }}</div>
+                                </div>
+                                <div class="flex items-start gap-3 text-sm text-gray-600">
+                                    <i class="fas fa-link w-5 text-center mt-1 text-gray-400"></i>
+                                    <div class="flex-1 truncate">
+                                        <a v-if="detailForm.url" :href="detailForm.url" target="_blank" class="text-blue-500 hover:underline">官方網站/連結</a>
+                                        <span v-else class="text-gray-400">尚無連結</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div v-if="detailForm.mapUrl" class="mt-4">
+                                <a :href="detailForm.mapUrl" target="_blank" class="block w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-center text-sm font-bold transition">
+                                    <i class="fas fa-map-marker-alt mr-2 text-red-500"></i> Google Maps
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- 編輯模式 Edit Mode -->
+                        <div v-else class="space-y-4">
+                            <!-- Basic Info -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="col-span-2">
+                                    <label class="text-xs font-bold text-gray-400 uppercase ml-1">名稱</label>
+                                    <input v-model="detailForm.name" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-pink-300 outline-none">
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-gray-400 uppercase ml-1">類別</label>
+                                    <select v-model="detailForm.category" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
+                                        <option value="spot">景點</option>
+                                        <option value="food">餐廳</option>
+                                        <option value="shopping">購物</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-gray-400 uppercase ml-1">顏色</label>
+                                    <select v-model="detailForm.theme" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
+                                        <option value="pink">粉紅</option>
+                                        <option value="blue">藍色</option>
+                                        <option value="green">綠色</option>
+                                        <option value="yellow">黃色</option>
+                                        <option value="purple">紫色</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Image Upload / URL (Modified) -->
+                            <div>
+                                <label class="text-xs font-bold text-gray-400 uppercase ml-1 flex justify-between">
+                                    <span>照片 (可上傳或貼網址)</span>
+                                    <span v-if="isProcessingImage" class="text-pink-500"><i class="fas fa-spinner fa-spin"></i> 處理中...</span>
+                                </label>
+                                
+                                <div class="space-y-2">
+                                    <!-- 1. 上傳按鈕 -->
+                                    <div class="flex gap-2">
+                                        <button @click="$refs.fileInput.click()" class="flex-1 py-2 bg-pink-50 text-pink-500 border border-pink-100 rounded-lg font-bold text-sm hover:bg-pink-100 transition flex items-center justify-center gap-2">
+                                            <i class="fas fa-camera"></i> 從手機/電腦上傳
+                                        </button>
+                                        <input type="file" ref="fileInput" accept="image/*" class="hidden" @change="handleFileUpload">
+                                    </div>
+                                    
+                                    <!-- 2. 網址輸入 (Fallback) -->
+                                    <div class="flex gap-2">
+                                        <input v-model="tempImageUrl" placeholder="或貼上圖片連結..." class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
+                                        <button @click="addImageUrl" class="px-3 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-600"><i class="fas fa-plus"></i></button>
+                                    </div>
+                                </div>
+
+                                <!-- Image List -->
+                                <div class="mt-2 flex gap-2 overflow-x-auto pb-1 min-h-[70px]" v-if="detailForm.images.length > 0">
+                                    <div v-for="(img, idx) in detailForm.images" :key="idx" class="relative w-16 h-16 shrink-0 rounded-lg overflow-hidden group border border-gray-100">
+                                        <img :src="img" class="w-full h-full object-cover">
+                                        <button @click="removeImage(idx)" class="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"><i class="fas fa-trash text-xs"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Details -->
+                            <div>
+                                <label class="text-xs font-bold text-gray-400 uppercase ml-1">描述</label>
+                                <textarea v-model="detailForm.description" rows="3" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-pink-300 outline-none"></textarea>
+                            </div>
+                            
+                            <div>
+                                <label class="text-xs font-bold text-gray-400 uppercase ml-1">營業時間</label>
+                                <input v-model="detailForm.hours" placeholder="例: 09:00 - 22:00" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
+                            </div>
+
+                            <div>
+                                <label class="text-xs font-bold text-gray-400 uppercase ml-1">網站連結</label>
+                                <input v-model="detailForm.url" placeholder="https://..." class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
+                            </div>
+
+                            <div>
+                                <label class="text-xs font-bold text-gray-400 uppercase ml-1">地圖連結 (Google Maps)</label>
+                                <input v-model="detailForm.mapUrl" placeholder="https://goo.gl/maps/..." class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Footer Action Bar -->
+                    <div class="p-4 border-t border-gray-100 bg-white flex items-center justify-between gap-3 shrink-0">
+                        
+                        <template v-if="!isEditingDetail">
+                            <button @click="startEditing" class="flex-1 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 text-sm transition">
+                                <i class="fas fa-pen mr-2"></i> 編輯資訊
+                            </button>
+                        </template>
+
+                        <template v-else>
+                            <button @click="deleteSpot" class="px-4 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-sm hover:bg-red-100 transition">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                            <button @click="cancelEditing" class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-200 transition">
+                                取消
+                            </button>
+                            <button @click="saveDetailChanges" class="flex-1 py-3 bg-black text-white rounded-xl font-bold text-sm hover:bg-gray-800 shadow-lg transition">
+                                儲存變更
+                            </button>
+                        </template>
+
                     </div>
                 </div>
             </div>
@@ -189,34 +370,43 @@
     const { createApp, ref, reactive, onMounted } = Vue;
     createApp({
         setup() {
+            // Data
             const spots = ref([]);
-            const isAddingMode = ref(false);
-            const showModal = ref(false);
-            const isEditing = ref(false);
-            const editingSpotId = ref(null);
             
-            const tempCoords = ref(null); // 用於儲存點擊位置
-            const mapContentRef = ref(null);
+            // Mode States
+            const isAddingMode = ref(false); // 點擊地圖新增模式
+            const isProcessingImage = ref(false); // 圖片處理中狀態
             
+            // Modal States
+            const showQuickAddModal = ref(false);
+            const showDetailModal = ref(false);
+            
+            // Editing Logic
+            const isEditingDetail = ref(false); // Detail Modal 是否處於編輯狀態
+            const selectedSpot = ref(null);     // 當前選中的 Spot 物件
+            const fileInput = ref(null);
+            
+            // Forms
             const quickForm = reactive({ name: '', theme: 'pink', category: 'spot' });
+            const detailForm = reactive({ 
+                id: null, name: '', theme: 'pink', category: 'spot', 
+                description: '', hours: '', url: '', mapUrl: '', images: [] 
+            });
+            const tempImageUrl = ref('');
 
-            // Panzoom 實例
+            // Panzoom & Map Refs
+            const mapContentRef = ref(null);
+            const tempCoords = ref(null);
             let panzoomInstance = null;
             
-            // 拖曳 & 長按邏輯變數
-            const isDraggingSpotId = ref(null); // 當前正在拖曳的 Spot ID
+            // Dragging Logic
+            const isDraggingSpotId = ref(null);
             let longPressTimer = null;
             let startX = 0, startY = 0;
-            let hasDragged = false; // 標記是否發生過拖曳 (用於防止拖曳結束觸發點擊)
-            
-            const LONG_PRESS_DURATION = 200; // 0.2秒
-            const MOVE_THRESHOLD = 5; // 手指抖動容錯值
+            let hasDragged = false;
+            const LONG_PRESS_DURATION = 200; 
 
-            // 雙擊偵測
-            let clickCount = 0;
-            let clickTimer = null;
-
-            // 初始化 Panzoom
+            // Initialize Panzoom
             const initPanzoom = () => {
                 const elem = document.getElementById('panzoom-area');
                 if (!elem) return;
@@ -234,215 +424,268 @@
             onMounted(() => {
                 const savedData = localStorage.getItem('seoul_travel_app_data');
                 if (savedData) spots.value = JSON.parse(savedData);
+                
                 if (document.readyState === 'complete') initPanzoom();
                 else window.addEventListener('load', initPanzoom);
                 window.addEventListener('resize', () => setTimeout(initPanzoom, 100));
             });
 
-            // 工具函數：取得事件座標
+            // Utils
             const getEventCoords = (e) => {
-                if (e.touches && e.touches.length > 0) {
-                    return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
-                }
+                if (e.touches && e.touches.length > 0) return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
                 return { clientX: e.clientX, clientY: e.clientY };
             };
 
-            // 工具函數：計算相對百分比座標
             const calculateRelativeCoords = (clientX, clientY) => {
                 const rect = mapContentRef.value.getBoundingClientRect();
-                const x = clientX - rect.left;
-                const y = clientY - rect.top;
                 return {
-                    left: (x / rect.width * 100).toFixed(2) + '%',
-                    top: (y / rect.height * 100).toFixed(2) + '%',
+                    left: ((clientX - rect.left) / rect.width * 100).toFixed(2) + '%',
+                    top: ((clientY - rect.top) / rect.height * 100).toFixed(2) + '%',
                 };
             };
 
-            // --- 1. 新增功能：單擊地圖 ---
+            const saveToLocal = () => {
+                // 檢查數據大小，防止過大 (Local Storage 限制約 5MB)
+                try {
+                    localStorage.setItem('seoul_travel_app_data', JSON.stringify(spots.value));
+                } catch (e) {
+                    alert('儲存空間已滿，請刪除一些圖片或地標後再試。');
+                }
+            };
+
+            // 圖片壓縮函數 (重要：防止 LocalStorage 爆滿)
+            const compressImage = (file) => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = (event) => {
+                        const img = new Image();
+                        img.src = event.target.result;
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            // 設定最大寬度，保持比例
+                            const maxWidth = 800; 
+                            let width = img.width;
+                            let height = img.height;
+                            
+                            if (width > maxWidth) {
+                                height = Math.round((height * maxWidth) / width);
+                                width = maxWidth;
+                            }
+                            
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, width, height);
+                            
+                            // 輸出為 JPEG, 品質 0.7
+                            resolve(canvas.toDataURL('image/jpeg', 0.7));
+                        };
+                    };
+                });
+            };
+
+            // --- Handlers: Map Interaction ---
             const toggleAddMode = () => {
                 isAddingMode.value = !isAddingMode.value;
-                showModal.value = false;
+                showQuickAddModal.value = false;
+                showDetailModal.value = false;
             };
 
             const handleMapClick = (e) => {
-                // 只有在新增模式下，且沒有正在拖曳圖標時，才觸發新增
-                if (!isAddingMode.value) return;
-                if (hasDragged) return; 
+                if (!isAddingMode.value || hasDragged) return;
 
                 const { clientX, clientY } = getEventCoords(e);
                 tempCoords.value = calculateRelativeCoords(clientX, clientY);
 
-                // 開啟新增視窗
-                isEditing.value = false;
-                editingSpotId.value = null;
+                // Reset & Open Quick Add
                 quickForm.name = '';
                 quickForm.theme = 'pink';
                 quickForm.category = 'spot';
-                showModal.value = true;
+                showQuickAddModal.value = true;
             };
 
-            // --- 2. 移動功能：長按圖標拖曳 ---
-            
-            // 按下圖標：開始偵測長按
+            // --- Handlers: Pin Dragging ---
             const handlePinStart = (spot, e) => {
-                // 不阻止冒泡 (讓 Panzoom 也能收到)，但如果長按觸發了，我們再攔截
                 const { clientX, clientY } = getEventCoords(e);
                 startX = clientX;
                 startY = clientY;
                 hasDragged = false;
                 
-                // 設定長按計時器
                 longPressTimer = setTimeout(() => {
-                    // 長按時間到！開始拖曳模式
                     isDraggingSpotId.value = spot.id;
-                    hasDragged = true; // 標記為拖曳行為
-                    
-                    // 震動回饋
+                    hasDragged = true;
                     if (navigator.vibrate) navigator.vibrate(50);
-                    
-                    // 暫停 Panzoom，避免地圖跟著動
                     if (panzoomInstance) panzoomInstance.setOptions({ disablePan: true });
-                    
                 }, LONG_PRESS_DURATION);
             };
 
-            // 移動 (在容器上監聽，保證拖曳流暢)
             const handleContainerMove = (e) => {
                 const { clientX, clientY } = getEventCoords(e);
 
                 if (isDraggingSpotId.value) {
-                    // 正在拖曳圖標
-                    e.preventDefault(); // 防止滾動
-                    e.stopPropagation();
-                    
-                    // 更新該圖標的位置
+                    e.preventDefault(); e.stopPropagation();
                     const spot = spots.value.find(s => s.id === isDraggingSpotId.value);
                     if (spot) {
                         const coords = calculateRelativeCoords(clientX, clientY);
                         spot.top = coords.top;
                         spot.left = coords.left;
                     }
-                } else {
-                    // 還沒觸發長按，檢查是否移動超過閾值 (若是，則取消長按偵測，視為滑動地圖)
-                    if (longPressTimer) {
-                        const moveX = Math.abs(clientX - startX);
-                        const moveY = Math.abs(clientY - startY);
-                        if (moveX > MOVE_THRESHOLD || moveY > MOVE_THRESHOLD) {
-                            clearTimeout(longPressTimer);
-                            longPressTimer = null;
-                        }
+                } else if (longPressTimer) {
+                    if (Math.abs(clientX - startX) > 5 || Math.abs(clientY - startY) > 5) {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
                     }
                 }
             };
 
-            // 放開
             const handleContainerEnd = () => {
-                // 清除長按計時器
-                if (longPressTimer) {
-                    clearTimeout(longPressTimer);
-                    longPressTimer = null;
-                }
-
+                if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
                 if (isDraggingSpotId.value) {
-                    // 拖曳結束
                     isDraggingSpotId.value = null;
-                    
-                    // 恢復 Panzoom
                     if (panzoomInstance) panzoomInstance.setOptions({ disablePan: false });
-                    
-                    // 儲存新位置
-                    localStorage.setItem('seoul_travel_app_data', JSON.stringify(spots.value));
-                    
-                    // 注意：這裡不設定 hasDragged = false，保留它為 true
-                    // 這樣 click 事件處理器就知道「剛才發生了拖曳」，而不是點擊
-                    // 我們利用 setTimeout 在下一個 tick 清除它，或者讓 click handler 自己判斷
+                    saveToLocal();
                     setTimeout(() => { hasDragged = false; }, 100);
                 }
             };
 
-            // --- 3. 點擊圖標：詳情與編輯 ---
+            // --- Handlers: Pin Click (Open Detail Modal) ---
             const handlePinClick = (spot, e) => {
-                // 如果剛剛發生了拖曳，則忽略這次「點擊」(因為這是拖曳結束時的 mouseup 觸發的)
-                if (hasDragged) {
-                    hasDragged = false;
-                    return;
-                }
-
-                if (isAddingMode.value) return; // 新增模式下不處理點擊詳情
-
-                clickCount++;
-                if (clickCount === 1) {
-                    clickTimer = setTimeout(() => {
-                        clickCount = 0;
-                        window.location.href = `detail.html?id=${spot.id}`;
-                    }, 250); 
-                } else {
-                    clearTimeout(clickTimer);
-                    clickCount = 0;
-                    openEditModal(spot);
-                }
-            };
-
-            // --- 編輯 / 刪除 / 儲存 ---
-            const openEditModal = (spot) => {
-                isEditing.value = true;
-                editingSpotId.value = spot.id;
-                quickForm.name = spot.name;
-                quickForm.theme = spot.theme;
-                quickForm.category = spot.category;
-                showModal.value = true;
-            };
-
-            const deleteSpot = () => {
-                if (!editingSpotId.value) return;
-                if (confirm('確定要刪除這個地標嗎？')) {
-                    spots.value = spots.value.filter(s => s.id !== editingSpotId.value);
-                    localStorage.setItem('seoul_travel_app_data', JSON.stringify(spots.value));
-                    showModal.value = false;
-                }
-            };
-
-            const confirmAction = () => {
-                if (isEditing.value) {
-                    const spot = spots.value.find(s => s.id === editingSpotId.value);
-                    if (spot) {
-                        spot.name = quickForm.name;
-                        spot.theme = quickForm.theme;
-                        spot.category = quickForm.category;
-                    }
-                } else {
-                    if (!tempCoords.value) return;
-                    const newSpot = {
-                        id: Date.now(),
-                        name: quickForm.name,
-                        theme: quickForm.theme,
-                        category: quickForm.category,
-                        top: tempCoords.value.top,
-                        left: tempCoords.value.left,
-                        date: new Date().toLocaleDateString(),
-                        images: [],
-                        description: '', hours: '', url: '', mapUrl: ''
-                    };
-                    spots.value.push(newSpot);
-                }
+                if (hasDragged || isAddingMode.value) return;
                 
-                localStorage.setItem('seoul_travel_app_data', JSON.stringify(spots.value));
-                showModal.value = false;
+                // Set Selected Spot
+                selectedSpot.value = spot;
+                
+                // Populate Detail Form (Clone data)
+                Object.assign(detailForm, JSON.parse(JSON.stringify(spot)));
+                if (!detailForm.images) detailForm.images = []; // Ensure array exists
+
+                // Open Modal in View Mode
+                isEditingDetail.value = false;
+                showDetailModal.value = true;
+            };
+
+            // --- Handlers: Quick Add Modal ---
+            const cancelQuickAdd = () => {
+                showQuickAddModal.value = false;
+                tempCoords.value = null;
+            };
+
+            const confirmQuickAdd = () => {
+                if (!tempCoords.value) return;
+                const newSpot = {
+                    id: Date.now(),
+                    name: quickForm.name,
+                    theme: quickForm.theme,
+                    category: quickForm.category,
+                    top: tempCoords.value.top,
+                    left: tempCoords.value.left,
+                    date: new Date().toLocaleDateString(),
+                    images: [],
+                    description: '', hours: '', url: '', mapUrl: ''
+                };
+                spots.value.push(newSpot);
+                saveToLocal();
+                
+                showQuickAddModal.value = false;
                 isAddingMode.value = false;
                 tempCoords.value = null;
             };
 
-            const cancelModal = () => { 
-                showModal.value = false; 
-                tempCoords.value = null; 
+            // --- Handlers: Detail Modal ---
+            const closeDetailModal = () => {
+                showDetailModal.value = false;
+                selectedSpot.value = null;
+            };
+
+            const startEditing = () => {
+                isEditingDetail.value = true;
+                tempImageUrl.value = '';
+            };
+
+            const cancelEditing = () => {
+                if (selectedSpot.value) {
+                    Object.assign(detailForm, JSON.parse(JSON.stringify(selectedSpot.value)));
+                }
+                isEditingDetail.value = false;
+            };
+
+            const saveDetailChanges = () => {
+                const target = spots.value.find(s => s.id === detailForm.id);
+                if (target) {
+                    Object.assign(target, detailForm);
+                    saveToLocal();
+                    selectedSpot.value = target; 
+                }
+                isEditingDetail.value = false;
+            };
+
+            const deleteSpot = () => {
+                if (confirm('確定要刪除這個地標嗎？無法復原。')) {
+                    spots.value = spots.value.filter(s => s.id !== detailForm.id);
+                    saveToLocal();
+                    closeDetailModal();
+                }
+            };
+
+            const addImageUrl = () => {
+                if (tempImageUrl.value) {
+                    detailForm.images.push(tempImageUrl.value);
+                    tempImageUrl.value = '';
+                }
             };
             
+            // --- NEW: Handle Image Upload ---
+            const handleFileUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                isProcessingImage.value = true;
+                
+                try {
+                    // 使用壓縮後的 Base64 字串
+                    const compressedDataUrl = await compressImage(file);
+                    detailForm.images.push(compressedDataUrl);
+                } catch (error) {
+                    console.error("Image processing failed", error);
+                    alert("圖片處理失敗，請重試");
+                } finally {
+                    isProcessingImage.value = false;
+                    // 清空 input，允許再次選擇同一檔案
+                    e.target.value = '';
+                }
+            };
+
+            const removeImage = (idx) => {
+                detailForm.images.splice(idx, 1);
+            };
+
+            // --- Helpers ---
             const getColorCode = (n) => ({ pink: '#EC4899', blue: '#3B82F6', green: '#10B981', yellow: '#F59E0B', purple: '#8B5CF6' }[n]);
+            const getCategoryIcon = (c) => ({ spot: 'fa-camera', food: 'fa-utensils', shopping: 'fa-shopping-bag' }[c]);
+            const getCategoryName = (c) => ({ spot: '景點', food: '餐廳', shopping: '購物' }[c]);
+            const getCategoryColorClass = (c) => ({ 
+                spot: 'bg-pink-50 border-pink-200 text-pink-500', 
+                food: 'bg-orange-50 border-orange-200 text-orange-500', 
+                shopping: 'bg-blue-50 border-blue-200 text-blue-500' 
+            }[c]);
+            const getCategoryBgClass = (c) => ({
+                spot: 'bg-pink-500', food: 'bg-orange-500', shopping: 'bg-blue-500'
+            }[c]);
 
             return { 
-                spots, isAddingMode, showModal, isEditing, quickForm, mapContentRef, isDraggingSpotId,
+                spots, isAddingMode, isProcessingImage,
+                showQuickAddModal, quickForm,
+                showDetailModal, detailForm, isEditingDetail, selectedSpot, tempImageUrl, fileInput,
+                mapContentRef, isDraggingSpotId,
+                
                 toggleAddMode, handleMapClick, handlePinStart, handleContainerMove, handleContainerEnd, handlePinClick,
-                confirmAction, cancelModal, deleteSpot, getColorCode 
+                
+                cancelQuickAdd, confirmQuickAdd,
+                closeDetailModal, startEditing, cancelEditing, saveDetailChanges, deleteSpot,
+                addImageUrl, removeImage, handleFileUpload,
+                
+                getColorCode, getCategoryIcon, getCategoryName, getCategoryColorClass, getCategoryBgClass
             };
         }
     }).mount('#app');
