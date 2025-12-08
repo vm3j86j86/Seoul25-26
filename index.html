@@ -69,6 +69,21 @@
         /* Scrollbar hide */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* --- 關鍵修正：防止圖片模糊 --- */
+        #map-content img {
+            /* 強制硬體加速，防止 DOM 更新時重繪導致模糊 */
+            transform: translateZ(0);
+            backface-visibility: hidden;
+            -webkit-font-smoothing: subpixel-antialiased;
+            /* 確保圖片渲染品質 */
+            image-rendering: -webkit-optimize-contrast;
+        }
+
+        /* 確保 Panzoom 容器本身也使用 GPU 層 */
+        #panzoom-area {
+            will-change: transform;
+        }
     </style>
 </head>
 <body>
@@ -410,6 +425,9 @@
             const initPanzoom = () => {
                 const elem = document.getElementById('panzoom-area');
                 if (!elem) return;
+                
+                // 如果已經存在實例，通常不需要完全銷毀，除非尺寸改變巨大
+                // 但為了安全起見，這裡保留銷毀邏輯，但從 resize 事件中移除它
                 if (panzoomInstance) panzoomInstance.destroy();
 
                 panzoomInstance = Panzoom(elem, {
@@ -427,7 +445,9 @@
                 
                 if (document.readyState === 'complete') initPanzoom();
                 else window.addEventListener('load', initPanzoom);
-                window.addEventListener('resize', () => setTimeout(initPanzoom, 100));
+                
+                // 修正：移除 resize 事件的強制 reset，防止手機鍵盤彈出時重置地圖
+                // window.addEventListener('resize', () => setTimeout(initPanzoom, 100));
             });
 
             // Utils
@@ -445,7 +465,6 @@
             };
 
             const saveToLocal = () => {
-                // 檢查數據大小，防止過大 (Local Storage 限制約 5MB)
                 try {
                     localStorage.setItem('seoul_travel_app_data', JSON.stringify(spots.value));
                 } catch (e) {
@@ -453,7 +472,7 @@
                 }
             };
 
-            // 圖片壓縮函數 (重要：防止 LocalStorage 爆滿)
+            // 圖片壓縮函數
             const compressImage = (file) => {
                 return new Promise((resolve) => {
                     const reader = new FileReader();
@@ -463,7 +482,6 @@
                         img.src = event.target.result;
                         img.onload = () => {
                             const canvas = document.createElement('canvas');
-                            // 設定最大寬度，保持比例
                             const maxWidth = 800; 
                             let width = img.width;
                             let height = img.height;
@@ -478,7 +496,6 @@
                             const ctx = canvas.getContext('2d');
                             ctx.drawImage(img, 0, 0, width, height);
                             
-                            // 輸出為 JPEG, 品質 0.7
                             resolve(canvas.toDataURL('image/jpeg', 0.7));
                         };
                     };
@@ -552,15 +569,9 @@
             // --- Handlers: Pin Click (Open Detail Modal) ---
             const handlePinClick = (spot, e) => {
                 if (hasDragged || isAddingMode.value) return;
-                
-                // Set Selected Spot
                 selectedSpot.value = spot;
-                
-                // Populate Detail Form (Clone data)
                 Object.assign(detailForm, JSON.parse(JSON.stringify(spot)));
-                if (!detailForm.images) detailForm.images = []; // Ensure array exists
-
-                // Open Modal in View Mode
+                if (!detailForm.images) detailForm.images = [];
                 isEditingDetail.value = false;
                 showDetailModal.value = true;
             };
@@ -635,15 +646,11 @@
                 }
             };
             
-            // --- NEW: Handle Image Upload ---
             const handleFileUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                
                 isProcessingImage.value = true;
-                
                 try {
-                    // 使用壓縮後的 Base64 字串
                     const compressedDataUrl = await compressImage(file);
                     detailForm.images.push(compressedDataUrl);
                 } catch (error) {
@@ -651,7 +658,6 @@
                     alert("圖片處理失敗，請重試");
                 } finally {
                     isProcessingImage.value = false;
-                    // 清空 input，允許再次選擇同一檔案
                     e.target.value = '';
                 }
             };
@@ -678,13 +684,10 @@
                 showQuickAddModal, quickForm,
                 showDetailModal, detailForm, isEditingDetail, selectedSpot, tempImageUrl, fileInput,
                 mapContentRef, isDraggingSpotId,
-                
                 toggleAddMode, handleMapClick, handlePinStart, handleContainerMove, handleContainerEnd, handlePinClick,
-                
                 cancelQuickAdd, confirmQuickAdd,
                 closeDetailModal, startEditing, cancelEditing, saveDetailChanges, deleteSpot,
                 addImageUrl, removeImage, handleFileUpload,
-                
                 getColorCode, getCategoryIcon, getCategoryName, getCategoryColorClass, getCategoryBgClass
             };
         }
