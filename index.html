@@ -75,17 +75,34 @@
         .fade-enter-from, .fade-leave-to { opacity: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        img { -webkit-font-smoothing: antialiased; image-rendering: high-quality; }
+        img { 
+            -webkit-font-smoothing: antialiased; 
+            image-rendering: high-quality; /* 嘗試使用瀏覽器高品質渲染 */
+        }
 
         /* Zoom Container */
-        #subway-panzoom-container { will-change: transform; cursor: grab; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
-        /* 確保圖片和Canvas都能被高品質縮放 */
-        #subway-panzoom-container img { 
+        #subway-panzoom-container { 
+            will-change: transform; 
+            cursor: grab; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
             width: 100%; 
-            height: auto; 
+            height: 100%; 
+        }
+        
+        /* 優化圖片樣式：
+           1. 移除 max-width 限制，讓 Panzoom 決定大小
+           2. 使用 will-change 提升性能
+        */
+        #subway-panzoom-container img { 
+            width: auto;
+            height: auto;
+            max-width: none; /* 關鍵：允許圖片超過容器大小，保持原始解析度 */
+            max-height: 100%; /* 初始載入時適應高度 */
             object-fit: contain; 
             pointer-events: none; 
-            max-width: none; 
+            will-change: transform;
         }
         #subway-panzoom-container:active { cursor: grabbing; }
     </style>
@@ -144,8 +161,12 @@
         <div class="h-[40vh] w-full bg-gray-100 overflow-hidden relative border-t border-gray-200 z-10">
             <!-- Panzoom Container -->
             <div id="subway-panzoom-container">
-                <!-- Direct PNG Image -->
-                <img src="image.png" 
+                <!-- 
+                     關鍵修改：
+                     1. 使用 Wikimedia 的高解析度 PNG (2560px 寬) 替代本地小圖
+                     2. 本地開發時，請確保您的 image.png 寬度至少有 2000px
+                -->
+                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Seoul_Subway_Map_en.svg/2560px-Seoul_Subway_Map_en.svg.png" 
                      alt="Subway Map" 
                      @error="handleImgError"
                      ref="subwayImgRef">
@@ -261,8 +282,8 @@
             const subwayImgRef = ref(null);
             
             const handleImgError = (e) => {
-                // Fallback to high-res Wikipedia image if local image fails
-                e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/Seoul_Metro_Line_Map_en.svg/2560px-Seoul_Metro_Line_Map_en.svg.png';
+                // 如果高解析度圖片載入失敗，退回到 Wikimedia 的另一種格式或普通連結
+                e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Seoul_Subway_Map_en.svg/2000px-Seoul_Subway_Map_en.svg.png';
             };
 
             const initSubwayPanzoom = () => {
@@ -273,7 +294,11 @@
                 if (subwayPanzoom) subwayPanzoom.destroy();
                 
                 subwayPanzoom = Panzoom(elem, {
-                    maxScale: 6, minScale: 1, startScale: 1, contain: 'outside', cursor: 'default', 
+                    maxScale: 5, // 限制最大縮放倍率，避免過度放大變模糊
+                    minScale: 1, 
+                    startScale: 1, 
+                    contain: 'outside', 
+                    cursor: 'default', 
                     touchAction: 'none' // Critical for gesture support
                 });
                 elem.addEventListener('wheel', subwayPanzoom.zoomWithWheel);
@@ -284,7 +309,10 @@
                 if (savedData) spots.value = JSON.parse(savedData);
                 
                 // Init panzoom for the PNG
-                initSubwayPanzoom();
+                // Use nextTick to ensure image DOM is ready
+                nextTick(() => {
+                    initSubwayPanzoom();
+                });
             });
 
             // Coords logic
@@ -429,4 +457,5 @@
 </script>
 </body>
 </html>
+
 
