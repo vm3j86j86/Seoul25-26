@@ -66,21 +66,22 @@
         .slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s ease-out, opacity 0.3s ease; }
         .slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); opacity: 0; }
 
+        /* Fade Transition for swiping content */
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+
         /* Scrollbar hide */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
         /* --- 關鍵修正：防止圖片模糊 --- */
         #map-content img {
-            /* 強制硬體加速，防止 DOM 更新時重繪導致模糊 */
             transform: translateZ(0);
             backface-visibility: hidden;
             -webkit-font-smoothing: subpixel-antialiased;
-            /* 確保圖片渲染品質 */
             image-rendering: -webkit-optimize-contrast;
         }
 
-        /* 確保 Panzoom 容器本身也使用 GPU 層 */
         #panzoom-area {
             will-change: transform;
         }
@@ -203,30 +204,54 @@
 
         <!-- 2. 詳細資訊 / 編輯 Modal (點擊圖標後觸發) -->
         <transition name="slide-up">
-            <div v-if="showDetailModal && selectedSpot" class="fixed inset-0 z-[70] flex flex-col justify-end sm:justify-center items-center bg-black/50 backdrop-blur-[2px]" @click.self="closeDetailModal">
+            <div v-if="showDetailModal && selectedSpot" 
+                 class="fixed inset-0 z-[70] flex flex-col justify-end sm:justify-center items-center bg-black/50 backdrop-blur-[2px]" 
+                 @click.self="closeDetailModal">
                 
-                <div class="bg-white w-full max-w-[440px] max-h-[90vh] sm:max-h-[80vh] sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden transition-transform">
+                <div class="bg-white w-full max-w-[440px] max-h-[90vh] sm:max-h-[80vh] sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden transition-transform"
+                     @touchstart="handleSwipeStart"
+                     @touchend="handleSwipeEnd">
                     
-                    <!-- Header Image Area -->
-                    <div class="relative h-48 sm:h-56 bg-gray-200 shrink-0">
-                        <!-- 圖片顯示 -->
-                        <img v-if="detailForm.images && detailForm.images.length > 0" 
-                             :src="detailForm.images[0]" 
-                             class="w-full h-full object-cover"
-                             onerror="this.style.display='none'">
+                    <!-- Header Image Area (Swipe Area) -->
+                    <div class="relative h-48 sm:h-56 bg-gray-200 shrink-0 group">
                         
-                        <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-100">
-                            <i class="fas fa-image text-4xl mb-2 opacity-50"></i>
-                            <span class="text-xs font-bold">尚無圖片</span>
-                        </div>
+                        <!-- 圖片顯示 (加入 fade 效果) -->
+                        <transition name="fade" mode="out-in">
+                            <div :key="detailForm.id" class="w-full h-full relative">
+                                <img v-if="detailForm.images && detailForm.images.length > 0" 
+                                     :src="detailForm.images[0]" 
+                                     class="w-full h-full object-cover"
+                                     onerror="this.style.display='none'">
+                                
+                                <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-100">
+                                    <i class="fas fa-image text-4xl mb-2 opacity-50"></i>
+                                    <span class="text-xs font-bold">尚無圖片</span>
+                                </div>
+                            </div>
+                        </transition>
 
                         <!-- Close Btn -->
-                        <button @click="closeDetailModal" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 backdrop-blur text-white flex items-center justify-center hover:bg-black/50 transition">
+                        <button @click="closeDetailModal" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 backdrop-blur text-white flex items-center justify-center hover:bg-black/50 transition z-20">
                             <i class="fas fa-times"></i>
                         </button>
+                        
+                        <!-- Page Counter -->
+                        <div v-if="spots.length > 1 && !isEditingDetail" class="absolute top-4 left-4 px-3 py-1 rounded-full bg-black/30 backdrop-blur text-white text-xs font-bold z-20">
+                            {{ currentSpotIndex + 1 }} / {{ spots.length }}
+                        </div>
+
+                        <!-- Navigation Arrows (Desktop/Visible on Hover) -->
+                        <div v-if="spots.length > 1 && !isEditingDetail" class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2 z-10 pointer-events-none">
+                            <button @click.stop="prevSpot" class="w-8 h-8 rounded-full bg-black/20 hover:bg-black/50 text-white pointer-events-auto backdrop-blur flex items-center justify-center transition" :class="{'opacity-0': currentSpotIndex === 0}">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <button @click.stop="nextSpot" class="w-8 h-8 rounded-full bg-black/20 hover:bg-black/50 text-white pointer-events-auto backdrop-blur flex items-center justify-center transition" :class="{'opacity-0': currentSpotIndex === spots.length - 1}">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
 
                         <!-- Category Badge -->
-                        <div class="absolute bottom-4 left-4 px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex items-center gap-1"
+                        <div class="absolute bottom-4 left-4 px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex items-center gap-1 z-20"
                              :class="getCategoryBgClass(detailForm.category)">
                             <i class="fas" :class="getCategoryIcon(detailForm.category)"></i>
                             {{ getCategoryName(detailForm.category) }}
@@ -234,38 +259,42 @@
                     </div>
 
                     <!-- Content Body -->
-                    <div class="flex-1 overflow-y-auto p-6 no-scrollbar">
+                    <div class="flex-1 overflow-y-auto p-6 no-scrollbar relative">
                         
                         <!-- 檢視模式 View Mode -->
                         <div v-if="!isEditingDetail" class="space-y-5">
-                            <div class="flex justify-between items-start">
-                                <h2 class="text-2xl font-bold text-gray-800 leading-tight">{{ detailForm.name }}</h2>
-                                <div class="w-4 h-4 rounded-full mt-2 shrink-0" :style="{ backgroundColor: getColorCode(detailForm.theme) }"></div>
-                            </div>
+                            <transition name="fade" mode="out-in">
+                                <div :key="detailForm.id">
+                                    <div class="flex justify-between items-start">
+                                        <h2 class="text-2xl font-bold text-gray-800 leading-tight">{{ detailForm.name }}</h2>
+                                        <div class="w-4 h-4 rounded-full mt-2 shrink-0" :style="{ backgroundColor: getColorCode(detailForm.theme) }"></div>
+                                    </div>
 
-                            <p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
-                                {{ detailForm.description || '這是一個很棒的地方，但還沒有詳細描述...' }}
-                            </p>
+                                    <p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap mt-4">
+                                        {{ detailForm.description || '這是一個很棒的地方，但還沒有詳細描述...' }}
+                                    </p>
 
-                            <div class="space-y-3 pt-2">
-                                <div class="flex items-start gap-3 text-sm text-gray-600">
-                                    <i class="fas fa-clock w-5 text-center mt-1 text-gray-400"></i>
-                                    <div class="flex-1">{{ detailForm.hours || '營業時間未提供' }}</div>
-                                </div>
-                                <div class="flex items-start gap-3 text-sm text-gray-600">
-                                    <i class="fas fa-link w-5 text-center mt-1 text-gray-400"></i>
-                                    <div class="flex-1 truncate">
-                                        <a v-if="detailForm.url" :href="detailForm.url" target="_blank" class="text-blue-500 hover:underline">官方網站/連結</a>
-                                        <span v-else class="text-gray-400">尚無連結</span>
+                                    <div class="space-y-3 pt-2">
+                                        <div class="flex items-start gap-3 text-sm text-gray-600">
+                                            <i class="fas fa-clock w-5 text-center mt-1 text-gray-400"></i>
+                                            <div class="flex-1">{{ detailForm.hours || '營業時間未提供' }}</div>
+                                        </div>
+                                        <div class="flex items-start gap-3 text-sm text-gray-600">
+                                            <i class="fas fa-link w-5 text-center mt-1 text-gray-400"></i>
+                                            <div class="flex-1 truncate">
+                                                <a v-if="detailForm.url" :href="detailForm.url" target="_blank" class="text-blue-500 hover:underline">官方網站/連結</a>
+                                                <span v-else class="text-gray-400">尚無連結</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div v-if="detailForm.mapUrl" class="mt-4">
+                                        <a :href="detailForm.mapUrl" target="_blank" class="block w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-center text-sm font-bold transition">
+                                            <i class="fas fa-map-marker-alt mr-2 text-red-500"></i> Google Maps
+                                        </a>
                                     </div>
                                 </div>
-                            </div>
-                            
-                            <div v-if="detailForm.mapUrl" class="mt-4">
-                                <a :href="detailForm.mapUrl" target="_blank" class="block w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-center text-sm font-bold transition">
-                                    <i class="fas fa-map-marker-alt mr-2 text-red-500"></i> Google Maps
-                                </a>
-                            </div>
+                            </transition>
                         </div>
 
                         <!-- 編輯模式 Edit Mode -->
@@ -353,7 +382,7 @@
                     </div>
 
                     <!-- Footer Action Bar -->
-                    <div class="p-4 border-t border-gray-100 bg-white flex items-center justify-between gap-3 shrink-0">
+                    <div class="p-4 border-t border-gray-100 bg-white flex items-center justify-between gap-3 shrink-0 relative z-20">
                         
                         <template v-if="!isEditingDetail">
                             <button @click="startEditing" class="flex-1 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 text-sm transition">
@@ -399,6 +428,7 @@
             // Editing Logic
             const isEditingDetail = ref(false); // Detail Modal 是否處於編輯狀態
             const selectedSpot = ref(null);     // 當前選中的 Spot 物件
+            const currentSpotIndex = ref(-1);   // 當前選中 Spot 在陣列中的索引 (新增: 用於切換)
             const fileInput = ref(null);
             
             // Forms
@@ -420,14 +450,16 @@
             let startX = 0, startY = 0;
             let hasDragged = false;
             const LONG_PRESS_DURATION = 200; 
+            
+            // Swipe Logic
+            const touchStartX = ref(0);
+            const touchEndX = ref(0);
 
             // Initialize Panzoom
             const initPanzoom = () => {
                 const elem = document.getElementById('panzoom-area');
                 if (!elem) return;
                 
-                // 如果已經存在實例，通常不需要完全銷毀，除非尺寸改變巨大
-                // 但為了安全起見，這裡保留銷毀邏輯，但從 resize 事件中移除它
                 if (panzoomInstance) panzoomInstance.destroy();
 
                 panzoomInstance = Panzoom(elem, {
@@ -445,9 +477,6 @@
                 
                 if (document.readyState === 'complete') initPanzoom();
                 else window.addEventListener('load', initPanzoom);
-                
-                // 修正：移除 resize 事件的強制 reset，防止手機鍵盤彈出時重置地圖
-                // window.addEventListener('resize', () => setTimeout(initPanzoom, 100));
             });
 
             // Utils
@@ -472,7 +501,6 @@
                 }
             };
 
-            // 圖片壓縮函數
             const compressImage = (file) => {
                 return new Promise((resolve) => {
                     const reader = new FileReader();
@@ -515,7 +543,6 @@
                 const { clientX, clientY } = getEventCoords(e);
                 tempCoords.value = calculateRelativeCoords(clientX, clientY);
 
-                // Reset & Open Quick Add
                 quickForm.name = '';
                 quickForm.theme = 'pink';
                 quickForm.category = 'spot';
@@ -566,14 +593,67 @@
                 }
             };
 
-            // --- Handlers: Pin Click (Open Detail Modal) ---
-            const handlePinClick = (spot, e) => {
-                if (hasDragged || isAddingMode.value) return;
+            // --- Handlers: Pin Click & Loading Spot Data ---
+            
+            const loadSpotData = (index) => {
+                if (index < 0 || index >= spots.value.length) return;
+                
+                const spot = spots.value[index];
                 selectedSpot.value = spot;
+                currentSpotIndex.value = index;
+                
+                // Deep Copy data to form
                 Object.assign(detailForm, JSON.parse(JSON.stringify(spot)));
                 if (!detailForm.images) detailForm.images = [];
+            }
+
+            const handlePinClick = (spot, e) => {
+                if (hasDragged || isAddingMode.value) return;
+                
+                // Find index
+                const idx = spots.value.findIndex(s => s.id === spot.id);
+                loadSpotData(idx);
+                
                 isEditingDetail.value = false;
                 showDetailModal.value = true;
+            };
+
+            // --- Handlers: Navigation (Next/Prev) ---
+            const nextSpot = () => {
+                if (isEditingDetail.value) return; // Prevent navigation while editing
+                if (currentSpotIndex.value < spots.value.length - 1) {
+                    loadSpotData(currentSpotIndex.value + 1);
+                }
+            };
+
+            const prevSpot = () => {
+                if (isEditingDetail.value) return; // Prevent navigation while editing
+                if (currentSpotIndex.value > 0) {
+                    loadSpotData(currentSpotIndex.value - 1);
+                }
+            };
+
+            // --- Handlers: Touch Swipe ---
+            const handleSwipeStart = (e) => {
+                touchStartX.value = e.changedTouches[0].screenX;
+            };
+
+            const handleSwipeEnd = (e) => {
+                touchEndX.value = e.changedTouches[0].screenX;
+                handleSwipeGesture();
+            };
+
+            const handleSwipeGesture = () => {
+                if (isEditingDetail.value) return; // Disable swipe while editing
+                const SWIPE_THRESHOLD = 50; // min distance
+                
+                if (touchEndX.value < touchStartX.value - SWIPE_THRESHOLD) {
+                    // Swiped Left -> Next Spot
+                    nextSpot();
+                } else if (touchEndX.value > touchStartX.value + SWIPE_THRESHOLD) {
+                    // Swiped Right -> Prev Spot
+                    prevSpot();
+                }
             };
 
             // --- Handlers: Quick Add Modal ---
@@ -607,6 +687,7 @@
             const closeDetailModal = () => {
                 showDetailModal.value = false;
                 selectedSpot.value = null;
+                currentSpotIndex.value = -1;
             };
 
             const startEditing = () => {
@@ -616,7 +697,8 @@
 
             const cancelEditing = () => {
                 if (selectedSpot.value) {
-                    Object.assign(detailForm, JSON.parse(JSON.stringify(selectedSpot.value)));
+                    // Revert
+                    loadSpotData(currentSpotIndex.value);
                 }
                 isEditingDetail.value = false;
             };
@@ -626,7 +708,7 @@
                 if (target) {
                     Object.assign(target, detailForm);
                     saveToLocal();
-                    selectedSpot.value = target; 
+                    selectedSpot.value = target; // Update reference
                 }
                 isEditingDetail.value = false;
             };
@@ -682,13 +764,14 @@
             return { 
                 spots, isAddingMode, isProcessingImage,
                 showQuickAddModal, quickForm,
-                showDetailModal, detailForm, isEditingDetail, selectedSpot, tempImageUrl, fileInput,
+                showDetailModal, detailForm, isEditingDetail, selectedSpot, currentSpotIndex, tempImageUrl, fileInput,
                 mapContentRef, isDraggingSpotId,
                 toggleAddMode, handleMapClick, handlePinStart, handleContainerMove, handleContainerEnd, handlePinClick,
                 cancelQuickAdd, confirmQuickAdd,
                 closeDetailModal, startEditing, cancelEditing, saveDetailChanges, deleteSpot,
                 addImageUrl, removeImage, handleFileUpload,
-                getColorCode, getCategoryIcon, getCategoryName, getCategoryColorClass, getCategoryBgClass
+                getColorCode, getCategoryIcon, getCategoryName, getCategoryColorClass, getCategoryBgClass,
+                nextSpot, prevSpot, handleSwipeStart, handleSwipeEnd // Export new methods
             };
         }
     }).mount('#app');
