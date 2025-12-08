@@ -19,28 +19,36 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
     
     <style>
-        body { font-family: 'Noto Sans TC', sans-serif; background-color: #111; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; overflow: hidden; }
-        .font-cute { font-family: 'Fredoka', 'Noto Sans TC', sans-serif; }
+        /* Global Reset & No Scroll */
+        body { 
+            font-family: 'Noto Sans TC', sans-serif; 
+            background-color: #111; 
+            margin: 0; 
+            padding: 0; 
+            -webkit-tap-highlight-color: transparent; 
+            overflow: hidden; /* Disable body scroll */
+            width: 100vw;
+            height: 100vh;
+        }
         
-        /* App 容器 - 改為可垂直滾動 */
+        /* App Container - Single Screen Flex Layout */
         #app-container { 
             max-width: 480px; 
-            height: 100dvh; 
+            height: 100dvh; /* Use dynamic viewport height */
             margin: 0 auto; 
             background-color: #fff; 
             position: relative; 
-            overflow-y: auto; /* 允許滾動 */
-            overflow-x: hidden;
+            overflow: hidden; /* Disable internal scroll */
             display: flex;
             flex-direction: column;
         }
         
         /* Pin Styles */
         .pin-marker { position: absolute; transform: translate(-50%, -100%); cursor: pointer; z-index: 10; display: flex; flex-direction: column; align-items: center; pointer-events: auto; user-select: none; -webkit-user-select: none; }
-        .pin-icon-box { width: 44px; height: 44px; background: white; border-radius: 50%; border: 3px solid white; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
+        .pin-icon-box { width: 36px; height: 36px; background: white; border-radius: 50%; border: 2px solid white; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
         .pin-icon-box img { width: 100%; height: 100%; object-fit: cover; }
-        .pin-tail { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid white; margin-top: -2px; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.1)); }
-        .pin-label { background: rgba(255,255,255,0.95); padding: 3px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; color: #4B5563; margin-top: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); white-space: nowrap; }
+        .pin-tail { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid white; margin-top: -1px; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.1)); }
+        .pin-label { background: rgba(255,255,255,0.95); padding: 2px 6px; border-radius: 6px; font-size: 9px; font-weight: 700; color: #4B5563; margin-top: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); white-space: nowrap; }
         
         /* Theme Colors */
         .pin-theme-pink .pin-icon-box { border-color: #FCE7F3; background: #FCE7F3; color: #EC4899; } .pin-theme-pink .pin-tail { border-top-color: #FCE7F3; }
@@ -51,67 +59,47 @@
 
         @keyframes bounce-soft { 0%, 100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, -108%); } }
         .animate-bounce-soft { animation: bounce-soft 2s infinite ease-in-out; }
-
-        /* 拖曳中的 Pin 樣式 */
+        
         .pin-dragging { z-index: 100 !important; transition: none !important; }
         .pin-dragging .pin-icon-box { transform: scale(1.2); box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
-        .pin-dragging.animate-bounce-soft { animation: none; } /* 拖曳時停止跳動 */
+        .pin-dragging.animate-bounce-soft { animation: none; }
 
-        /* 十字游標 (新增模式) */
         .cursor-crosshair-custom { cursor: crosshair; }
         
-        /* Modal Transitions */
+        /* Transitions */
         .modal-enter-active, .modal-leave-active { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
         .modal-enter-from, .modal-leave-to { opacity: 0; transform: scale(0.95); }
-
         .slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s ease-out, opacity 0.3s ease; }
         .slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); opacity: 0; }
-
-        /* Fade Transition */
         .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
         .fade-enter-from, .fade-leave-to { opacity: 0; }
-
-        /* Scrollbar hide */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        img { -webkit-font-smoothing: subpixel-antialiased; image-rendering: -webkit-optimize-contrast; }
 
-        /* 防止圖片模糊 */
-        img {
-            -webkit-font-smoothing: subpixel-antialiased;
-            image-rendering: -webkit-optimize-contrast;
-        }
-
-        /* Subway Panzoom 容器 */
-        #subway-panzoom-container {
-            will-change: transform;
-            cursor: grab;
-        }
-        #subway-panzoom-container:active {
-            cursor: grabbing;
-        }
+        /* Zoom Container */
+        #subway-panzoom-container { will-change: transform; cursor: grab; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+        #subway-panzoom-container img { width: 100%; height: auto; object-fit: contain; pointer-events: none; }
+        #subway-panzoom-container:active { cursor: grabbing; }
     </style>
 </head>
 <body>
 <div id="app">
     <div id="app-container">
         
-        <!-- UI Layer -->
-        
-        <!-- 新增按鈕 (左上角 - 固定在容器頂部) -->
-        <button class="fixed top-4 left-4 z-50 w-12 h-12 rounded-full shadow-lg flex items-center justify-center transform transition-all duration-300"
+        <!-- Add Button -->
+        <button class="absolute top-4 left-4 z-50 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transform transition-all duration-300"
                 :class="isAddingMode ? 'bg-gray-800 text-white rotate-45 scale-110' : 'bg-white/90 backdrop-blur text-pink-500 hover:scale-105 active:scale-95'"
-                :style="{ maxWidth: '480px' }" 
                 @click.stop="toggleAddMode">
-            <i class="fas fa-plus text-xl"></i>
+            <i class="fas fa-plus text-sm"></i>
         </button>
 
-        <!-- Main Content (Scrollable) -->
-        <div class="w-full flex flex-col bg-white min-h-full pb-20">
+        <!-- SECTION 1: Map Area (Flexible Height, No Scroll, Centered) -->
+        <div class="flex-1 bg-gray-50 relative overflow-hidden flex items-center justify-center w-full select-none"
+             :class="{'cursor-crosshair-custom': isAddingMode}">
             
-            <!-- SECTION 1: 首爾地圖區 (固定，不縮放，可標記) -->
-            <div id="map-section" 
-                 class="relative w-full select-none"
-                 :class="{'cursor-crosshair-custom': isAddingMode}"
+            <!-- Map Wrapper: Inline-block adapts to image size so pins stick correctly -->
+            <div class="relative inline-block" 
                  ref="mapContentRef"
                  @click="handleMapClick"
                  @mousemove="handleContainerMove"
@@ -120,19 +108,23 @@
                  @touchend="handleContainerEnd"
                  @mouseleave="handleContainerEnd">
                 
-                <img src="map.png" class="w-full h-auto block pointer-events-none" alt="Seoul Map" onerror="this.src='https://placehold.co/600x800/png?text=Seoul+Map'">
+                <!-- Map Image: Max dimensions ensure it fits within the flex area without scrolling -->
+                <img src="map.png" 
+                     class="max-w-full max-h-[55vh] w-auto h-auto block pointer-events-none shadow-sm" 
+                     alt="Seoul Map" 
+                     onerror="this.src='https://placehold.co/600x800/png?text=Seoul+Map'">
                 
-                <!-- Pins (Only on Map) -->
+                <!-- Pins -->
                 <div v-for="spot in spots" :key="spot.id"
                      class="pin-marker"
                      :class="[`pin-theme-${spot.theme}`, isDraggingSpotId === spot.id ? 'pin-dragging' : 'animate-bounce-soft']"
                      :style="{ top: spot.top, left: spot.left }"
-                     @touchstart="handlePinStart(spot, $event)"
-                     @mousedown="handlePinStart(spot, $event)"
+                     @touchstart.stop="handlePinStart(spot, $event)"
+                     @mousedown.stop="handlePinStart(spot, $event)"
                      @click.stop="handlePinClick(spot, $event)">
                     <div class="pin-icon-box">
-                        <img v-if="spot.images && spot.images.length > 0" :src="spot.images[0]" class="w-full h-full object-cover">
-                        <i v-else class="fas text-lg" :class="{
+                        <img v-if="spot.images && spot.images.length > 0" :src="spot.images[0]">
+                        <i v-else class="fas text-sm" :class="{
                             'fa-utensils': spot.category === 'food',
                             'fa-shopping-bag': spot.category === 'shopping',
                             'fa-camera': spot.category === 'spot'
@@ -142,202 +134,85 @@
                     <div class="pin-label">{{ spot.name }}</div>
                 </div>
             </div>
-
-            <!-- 分隔線與標題 -->
-            <div class="w-full bg-gray-100 py-3 border-y border-gray-200 flex items-center justify-center sticky top-0 z-40 shadow-sm">
-                <span class="text-xs font-bold text-gray-500 uppercase tracking-widest bg-gray-200 px-3 py-1 rounded-full">
-                    <i class="fas fa-subway mr-2"></i>首爾地鐵圖
-                </span>
-            </div>
-
-            <!-- SECTION 2: 地鐵圖區 (獨立縮放) -->
-            <div class="relative w-full h-[60vh] bg-gray-50 overflow-hidden group border-b border-gray-200">
-                
-                <!-- Zoom Controls -->
-                <div class="absolute bottom-4 right-4 z-20 flex flex-col gap-2">
-                     <button @click="resetSubway" class="w-10 h-10 bg-white shadow-md rounded-full text-gray-600 flex items-center justify-center active:scale-95 transition">
-                        <i class="fas fa-compress-arrows-alt"></i>
-                    </button>
-                    <button @click="zoomInSubway" class="w-10 h-10 bg-white shadow-md rounded-full text-gray-600 flex items-center justify-center active:scale-95 transition">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                    <button @click="zoomOutSubway" class="w-10 h-10 bg-white shadow-md rounded-full text-gray-600 flex items-center justify-center active:scale-95 transition">
-                        <i class="fas fa-minus"></i>
-                    </button>
-                </div>
-
-                <!-- Zoomable Container -->
-                <div id="subway-panzoom-container" class="w-full h-full flex items-center justify-center">
-                    <img src="subway.png" class="w-full h-auto object-contain pointer-events-none" alt="Subway Map" onerror="this.src='https://placehold.co/800x600/png?text=Subway+Zoomable'">
-                </div>
-            </div>
-
         </div>
 
-        <!-- 1. 快速新增 Modal -->
+        <!-- SECTION 2: Subway Area (Fixed Height, Zoomable) -->
+        <div class="h-[40vh] w-full bg-gray-100 overflow-hidden relative border-t border-gray-200 z-10">
+            <!-- Panzoom Container -->
+            <div id="subway-panzoom-container">
+                <img src="subway.png" alt="Subway Map" onerror="this.src='https://placehold.co/800x600/png?text=Subway+Map'">
+            </div>
+        </div>
+
+        <!-- Modals (Overlay) -->
+        <!-- 1. Quick Add -->
         <transition name="modal">
             <div v-if="showQuickAddModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-5" @click.self="cancelQuickAdd">
-                <div class="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl transform transition-all">
+                <div class="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl">
                     <h3 class="text-lg font-bold text-gray-800 mb-4 text-center">新增地標</h3>
-                    
                     <div class="space-y-4">
-                        <!-- 類別選擇 -->
                         <div>
                             <label class="text-xs font-bold text-gray-400 uppercase ml-1 block mb-2">類別</label>
                             <div class="flex gap-2">
-                                <button v-for="cat in ['spot', 'food', 'shopping']" 
-                                        :key="cat"
-                                        @click="quickForm.category = cat" 
+                                <button v-for="cat in ['spot', 'food', 'shopping']" :key="cat" @click="quickForm.category = cat" 
                                         class="flex-1 py-2 rounded-xl text-xs font-bold border transition-colors flex flex-col items-center justify-center gap-1" 
                                         :class="quickForm.category === cat ? getCategoryColorClass(cat) : 'border-gray-200 text-gray-400'">
-                                    <i class="fas text-sm" :class="getCategoryIcon(cat)"></i>
-                                    {{ getCategoryName(cat) }}
+                                    <i class="fas text-sm" :class="getCategoryIcon(cat)"></i>{{ getCategoryName(cat) }}
                                 </button>
                             </div>
                         </div>
-                        
-                        <!-- 名稱輸入 -->
                         <div>
                             <label class="text-xs font-bold text-gray-400 uppercase ml-1">名稱</label>
-                            <input v-model="quickForm.name" type="text" placeholder="輸入地點名稱..." class="mt-1 w-full bg-gray-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400">
+                            <input v-model="quickForm.name" type="text" placeholder="地點名稱..." class="mt-1 w-full bg-gray-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400">
                         </div>
-
-                        <!-- 顏色選擇 -->
                         <div>
-                            <label class="text-xs font-bold text-gray-400 uppercase ml-1 block mb-2">標籤顏色</label>
+                            <label class="text-xs font-bold text-gray-400 uppercase ml-1 block mb-2">顏色</label>
                             <div class="flex justify-between gap-2">
-                                <button v-for="color in ['pink', 'blue', 'green', 'yellow', 'purple']" 
-                                        :key="color" 
-                                        @click="quickForm.theme = color" 
+                                <button v-for="color in ['pink', 'blue', 'green', 'yellow', 'purple']" :key="color" @click="quickForm.theme = color" 
                                         class="w-8 h-8 rounded-full border-2 transition-transform active:scale-90" 
                                         :class="[quickForm.theme === color ? 'border-gray-400 scale-110 shadow-sm' : 'border-transparent']" 
-                                        :style="{ backgroundColor: getColorCode(color) }">
-                                </button>
+                                        :style="{ backgroundColor: getColorCode(color) }"></button>
                             </div>
                         </div>
                     </div>
-                    
                     <div class="flex gap-3 mt-6">
                         <button @click="cancelQuickAdd" class="flex-1 py-3 rounded-xl font-bold text-gray-500 bg-gray-100 text-sm">取消</button>
-                        <button @click="confirmQuickAdd" class="flex-1 py-3 rounded-xl font-bold text-white bg-pink-500 shadow-lg shadow-pink-200 text-sm" :disabled="!quickForm.name">
-                            建立
-                        </button>
+                        <button @click="confirmQuickAdd" class="flex-1 py-3 rounded-xl font-bold text-white bg-pink-500 shadow-lg shadow-pink-200 text-sm" :disabled="!quickForm.name">建立</button>
                     </div>
                 </div>
             </div>
         </transition>
 
-        <!-- 2. 詳細資訊 Modal -->
+        <!-- 2. Detail Modal -->
         <transition name="slide-up">
-            <div v-if="showDetailModal && selectedSpot" 
-                 class="fixed inset-0 z-[70] flex flex-col justify-end sm:justify-center items-center bg-black/50 backdrop-blur-[2px]" 
-                 @click.self="closeDetailModal">
-                
-                <div class="bg-white w-full max-w-[440px] max-h-[90vh] sm:max-h-[80vh] sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden transition-transform"
-                     @touchstart="handleSwipeStart"
-                     @touchend="handleSwipeEnd">
-                    
-                    <!-- Header -->
-                    <div class="relative h-48 sm:h-56 bg-gray-200 shrink-0 group">
-                        <transition name="fade" mode="out-in">
-                            <div :key="detailForm.id" class="w-full h-full relative">
-                                <img v-if="detailForm.images && detailForm.images.length > 0" 
-                                     :src="detailForm.images[0]" 
-                                     class="w-full h-full object-cover"
-                                     onerror="this.style.display='none'">
-                                <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-100">
-                                    <i class="fas fa-image text-4xl mb-2 opacity-50"></i>
-                                    <span class="text-xs font-bold">尚無圖片</span>
-                                </div>
-                            </div>
-                        </transition>
-                        <button @click="closeDetailModal" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 backdrop-blur text-white flex items-center justify-center hover:bg-black/50 transition z-20">
-                            <i class="fas fa-times"></i>
-                        </button>
-                        <div v-if="spots.length > 1 && !isEditingDetail" class="absolute top-4 left-4 px-3 py-1 rounded-full bg-black/30 backdrop-blur text-white text-xs font-bold z-20">
-                            {{ currentSpotIndex + 1 }} / {{ spots.length }}
-                        </div>
-                        <div v-if="spots.length > 1 && !isEditingDetail" class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2 z-10 pointer-events-none">
-                            <button @click.stop="prevSpot" class="w-8 h-8 rounded-full bg-black/20 hover:bg-black/50 text-white pointer-events-auto backdrop-blur flex items-center justify-center transition" :class="{'opacity-0': currentSpotIndex === 0}">
-                                <i class="fas fa-chevron-left"></i>
-                            </button>
-                            <button @click.stop="nextSpot" class="w-8 h-8 rounded-full bg-black/20 hover:bg-black/50 text-white pointer-events-auto backdrop-blur flex items-center justify-center transition" :class="{'opacity-0': currentSpotIndex === spots.length - 1}">
-                                <i class="fas fa-chevron-right"></i>
-                            </button>
-                        </div>
-                        <div class="absolute bottom-4 left-4 px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex items-center gap-1 z-20"
-                             :class="getCategoryBgClass(detailForm.category)">
-                            <i class="fas" :class="getCategoryIcon(detailForm.category)"></i>
-                            {{ getCategoryName(detailForm.category) }}
-                        </div>
+            <div v-if="showDetailModal && selectedSpot" class="fixed inset-0 z-[70] flex flex-col justify-end items-center bg-black/50 backdrop-blur-[2px]" @click.self="closeDetailModal">
+                <div class="bg-white w-full max-w-[480px] h-[85vh] rounded-t-3xl shadow-2xl flex flex-col overflow-hidden" @touchstart="handleSwipeStart" @touchend="handleSwipeEnd">
+                    <div class="relative h-48 bg-gray-200 shrink-0 group">
+                        <img v-if="detailForm.images && detailForm.images.length > 0" :src="detailForm.images[0]" class="w-full h-full object-cover">
+                        <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-100"><i class="fas fa-image text-4xl mb-2 opacity-50"></i><span class="text-xs font-bold">尚無圖片</span></div>
+                        <button @click="closeDetailModal" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 backdrop-blur text-white flex items-center justify-center"><i class="fas fa-times"></i></button>
                     </div>
-
-                    <!-- Body -->
                     <div class="flex-1 overflow-y-auto p-6 no-scrollbar relative">
-                        <div v-if="!isEditingDetail" class="space-y-5">
-                            <transition name="fade" mode="out-in">
-                                <div :key="detailForm.id">
-                                    <div class="flex justify-between items-start">
-                                        <h2 class="text-2xl font-bold text-gray-800 leading-tight">{{ detailForm.name }}</h2>
-                                        <div class="w-4 h-4 rounded-full mt-2 shrink-0" :style="{ backgroundColor: getColorCode(detailForm.theme) }"></div>
-                                    </div>
-                                    <p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap mt-4">
-                                        {{ detailForm.description || '這是一個很棒的地方，但還沒有詳細描述...' }}
-                                    </p>
-                                    <div class="space-y-3 pt-2">
-                                        <div class="flex items-start gap-3 text-sm text-gray-600">
-                                            <i class="fas fa-clock w-5 text-center mt-1 text-gray-400"></i>
-                                            <div class="flex-1">{{ detailForm.hours || '營業時間未提供' }}</div>
-                                        </div>
-                                        <div class="flex items-start gap-3 text-sm text-gray-600">
-                                            <i class="fas fa-link w-5 text-center mt-1 text-gray-400"></i>
-                                            <div class="flex-1 truncate">
-                                                <a v-if="detailForm.url" :href="detailForm.url" target="_blank" class="text-blue-500 hover:underline">官方網站/連結</a>
-                                                <span v-else class="text-gray-400">尚無連結</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div v-if="detailForm.mapUrl" class="mt-4">
-                                        <a :href="detailForm.mapUrl" target="_blank" class="block w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-center text-sm font-bold transition">
-                                            <i class="fas fa-map-marker-alt mr-2 text-red-500"></i> Google Maps
-                                        </a>
-                                    </div>
-                                </div>
-                            </transition>
+                        <div v-if="!isEditingDetail" class="space-y-4">
+                            <h2 class="text-2xl font-bold text-gray-800">{{ detailForm.name }}</h2>
+                            <p class="text-gray-600 text-sm">{{ detailForm.description || '暫無描述...' }}</p>
                         </div>
                         <div v-else class="space-y-4">
-                            <div class="grid grid-cols-2 gap-3">
-                                <div class="col-span-2"><label class="text-xs font-bold text-gray-400 uppercase ml-1">名稱</label><input v-model="detailForm.name" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-pink-300 outline-none"></div>
-                                <div><label class="text-xs font-bold text-gray-400 uppercase ml-1">類別</label><select v-model="detailForm.category" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"><option value="spot">景點</option><option value="food">餐廳</option><option value="shopping">購物</option></select></div>
-                                <div><label class="text-xs font-bold text-gray-400 uppercase ml-1">顏色</label><select v-model="detailForm.theme" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"><option value="pink">粉紅</option><option value="blue">藍色</option><option value="green">綠色</option><option value="yellow">黃色</option><option value="purple">紫色</option></select></div>
+                            <input v-model="detailForm.name" class="w-full bg-gray-50 border rounded-lg px-3 py-2 text-sm">
+                            <textarea v-model="detailForm.description" rows="3" class="w-full bg-gray-50 border rounded-lg px-3 py-2 text-sm"></textarea>
+                            <div class="flex gap-2">
+                                <button @click="$refs.fileInput.click()" class="flex-1 py-2 bg-pink-50 text-pink-500 rounded-lg text-sm font-bold"><i class="fas fa-camera mr-1"></i>上傳照片</button>
+                                <input type="file" ref="fileInput" accept="image/*" class="hidden" @change="handleFileUpload">
                             </div>
-                            <div>
-                                <label class="text-xs font-bold text-gray-400 uppercase ml-1 flex justify-between"><span>照片</span><span v-if="isProcessingImage" class="text-pink-500"><i class="fas fa-spinner fa-spin"></i> 處理中...</span></label>
-                                <div class="space-y-2">
-                                    <div class="flex gap-2"><button @click="$refs.fileInput.click()" class="flex-1 py-2 bg-pink-50 text-pink-500 border border-pink-100 rounded-lg font-bold text-sm hover:bg-pink-100 transition flex items-center justify-center gap-2"><i class="fas fa-camera"></i> 從手機/電腦上傳</button><input type="file" ref="fileInput" accept="image/*" class="hidden" @change="handleFileUpload"></div>
-                                    <div class="flex gap-2"><input v-model="tempImageUrl" placeholder="或貼上圖片連結..." class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"><button @click="addImageUrl" class="px-3 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-600"><i class="fas fa-plus"></i></button></div>
-                                </div>
-                                <div class="mt-2 flex gap-2 overflow-x-auto pb-1 min-h-[70px]" v-if="detailForm.images.length > 0">
-                                    <div v-for="(img, idx) in detailForm.images" :key="idx" class="relative w-16 h-16 shrink-0 rounded-lg overflow-hidden group border border-gray-100">
-                                        <img :src="img" class="w-full h-full object-cover">
-                                        <button @click="removeImage(idx)" class="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"><i class="fas fa-trash text-xs"></i></button>
-                                    </div>
-                                </div>
-                            </div>
-                            <div><label class="text-xs font-bold text-gray-400 uppercase ml-1">描述</label><textarea v-model="detailForm.description" rows="3" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-pink-300 outline-none"></textarea></div>
-                            <div><label class="text-xs font-bold text-gray-400 uppercase ml-1">營業時間</label><input v-model="detailForm.hours" placeholder="例: 09:00 - 22:00" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"></div>
-                            <div><label class="text-xs font-bold text-gray-400 uppercase ml-1">網站連結</label><input v-model="detailForm.url" placeholder="https://..." class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"></div>
-                            <div><label class="text-xs font-bold text-gray-400 uppercase ml-1">地圖連結</label><input v-model="detailForm.mapUrl" placeholder="https://goo.gl/maps/..." class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"></div>
                         </div>
                     </div>
-                    <div class="p-4 border-t border-gray-100 bg-white flex items-center justify-between gap-3 shrink-0 relative z-20">
+                    <div class="p-4 border-t border-gray-100 bg-white flex gap-3 shrink-0">
                         <template v-if="!isEditingDetail">
-                            <button @click="startEditing" class="flex-1 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 text-sm transition"><i class="fas fa-pen mr-2"></i> 編輯資訊</button>
+                            <button @click="startEditing" class="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-gray-700 text-sm"><i class="fas fa-pen mr-2"></i>編輯</button>
                         </template>
                         <template v-else>
-                            <button @click="deleteSpot" class="px-4 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-sm hover:bg-red-100 transition"><i class="fas fa-trash-alt"></i></button>
-                            <button @click="cancelEditing" class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-200 transition">取消</button>
-                            <button @click="saveDetailChanges" class="flex-1 py-3 bg-black text-white rounded-xl font-bold text-sm hover:bg-gray-800 shadow-lg transition">儲存變更</button>
+                            <button @click="deleteSpot" class="w-12 py-3 bg-red-50 text-red-500 rounded-xl"><i class="fas fa-trash-alt"></i></button>
+                            <button @click="saveDetailChanges" class="flex-1 py-3 bg-black text-white rounded-xl font-bold text-sm">儲存</button>
                         </template>
                     </div>
                 </div>
@@ -351,73 +226,48 @@
     const { createApp, ref, reactive, onMounted } = Vue;
     createApp({
         setup() {
-            // Data
             const spots = ref([]);
-            
-            // Mode States
             const isAddingMode = ref(false); 
             const isProcessingImage = ref(false);
-            
-            // Modal States
             const showQuickAddModal = ref(false);
             const showDetailModal = ref(false);
-            
-            // Editing Logic
             const isEditingDetail = ref(false);
             const selectedSpot = ref(null);
             const currentSpotIndex = ref(-1);
             const fileInput = ref(null);
-            
-            // Forms
             const quickForm = reactive({ name: '', theme: 'pink', category: 'spot' });
             const detailForm = reactive({ id: null, name: '', theme: 'pink', category: 'spot', description: '', hours: '', url: '', mapUrl: '', images: [] });
             const tempImageUrl = ref('');
-
-            // Refs
             const mapContentRef = ref(null);
             const tempCoords = ref(null);
-            
-            // Subway Panzoom
             let subwayPanzoom = null;
-            
-            // Dragging Logic
             const isDraggingSpotId = ref(null);
             let longPressTimer = null;
             let startX = 0, startY = 0;
             let hasDragged = false;
             const LONG_PRESS_DURATION = 200; 
-            
-            // Swipe Logic
             const touchStartX = ref(0);
             const touchEndX = ref(0);
 
-            // Initialize Subway Panzoom
             const initSubwayPanzoom = () => {
                 const elem = document.getElementById('subway-panzoom-container');
                 if (!elem) return;
-                
                 if (subwayPanzoom) subwayPanzoom.destroy();
-
                 subwayPanzoom = Panzoom(elem, {
-                    maxScale: 5, minScale: 1, startScale: 1, contain: 'outside', cursor: 'grab', touchAction: 'none' 
+                    maxScale: 6, minScale: 1, startScale: 1, contain: 'outside', cursor: 'default', 
+                    touchAction: 'none' // Critical for gesture support
                 });
-                
                 elem.addEventListener('wheel', subwayPanzoom.zoomWithWheel);
             };
-
-            const zoomInSubway = () => subwayPanzoom && subwayPanzoom.zoomIn();
-            const zoomOutSubway = () => subwayPanzoom && subwayPanzoom.zoomOut();
-            const resetSubway = () => subwayPanzoom && subwayPanzoom.reset();
 
             onMounted(() => {
                 const savedData = localStorage.getItem('seoul_travel_app_data');
                 if (savedData) spots.value = JSON.parse(savedData);
-                
-                if (document.readyState === 'complete') initSubwayPanzoom();
-                else window.addEventListener('load', initSubwayPanzoom);
+                // Delay init to ensure layout settles
+                setTimeout(initSubwayPanzoom, 100);
             });
 
-            // Utils
+            // Coords logic adjusted for the new centered inline-block wrapper
             const getEventCoords = (e) => {
                 if (e.touches && e.touches.length > 0) return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
                 return { clientX: e.clientX, clientY: e.clientY };
@@ -432,11 +282,7 @@
             };
 
             const saveToLocal = () => {
-                try {
-                    localStorage.setItem('seoul_travel_app_data', JSON.stringify(spots.value));
-                } catch (e) {
-                    alert('儲存空間已滿，請刪除一些圖片或地標後再試。');
-                }
+                try { localStorage.setItem('seoul_travel_app_data', JSON.stringify(spots.value)); } catch (e) {}
             };
 
             const compressImage = (file) => {
@@ -449,8 +295,7 @@
                         img.onload = () => {
                             const canvas = document.createElement('canvas');
                             const maxWidth = 800; 
-                            let width = img.width;
-                            let height = img.height;
+                            let width = img.width; let height = img.height;
                             if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
                             canvas.width = width; canvas.height = height;
                             const ctx = canvas.getContext('2d');
@@ -461,13 +306,7 @@
                 });
             };
 
-            // --- Map Logic (Fixed map, add/drag pins) ---
-            const toggleAddMode = () => {
-                isAddingMode.value = !isAddingMode.value;
-                showQuickAddModal.value = false;
-                showDetailModal.value = false;
-            };
-
+            const toggleAddMode = () => { isAddingMode.value = !isAddingMode.value; showQuickAddModal.value = false; showDetailModal.value = false; };
             const handleMapClick = (e) => {
                 if (!isAddingMode.value || hasDragged) return;
                 const { clientX, clientY } = getEventCoords(e);
@@ -504,13 +343,11 @@
             const handleContainerEnd = () => {
                 if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
                 if (isDraggingSpotId.value) {
-                    isDraggingSpotId.value = null;
-                    saveToLocal();
+                    isDraggingSpotId.value = null; saveToLocal();
                     setTimeout(() => { hasDragged = false; }, 100);
                 }
             };
 
-            // --- Spot Logic ---
             const loadSpotData = (index) => {
                 if (index < 0 || index >= spots.value.length) return;
                 const spot = spots.value[index];
@@ -524,19 +361,16 @@
                 loadSpotData(idx);
                 isEditingDetail.value = false; showDetailModal.value = true;
             };
-            const nextSpot = () => { if (!isEditingDetail.value && currentSpotIndex.value < spots.value.length - 1) loadSpotData(currentSpotIndex.value + 1); };
-            const prevSpot = () => { if (!isEditingDetail.value && currentSpotIndex.value > 0) loadSpotData(currentSpotIndex.value - 1); };
 
             const handleSwipeStart = (e) => { touchStartX.value = e.changedTouches[0].screenX; };
             const handleSwipeEnd = (e) => {
                 touchEndX.value = e.changedTouches[0].screenX;
                 if (!isEditingDetail.value && Math.abs(touchEndX.value - touchStartX.value) > 50) {
-                    if (touchEndX.value < touchStartX.value) nextSpot();
-                    else prevSpot();
+                    if (touchEndX.value < touchStartX.value && currentSpotIndex.value < spots.value.length - 1) loadSpotData(currentSpotIndex.value + 1);
+                    else if (touchEndX.value > touchStartX.value && currentSpotIndex.value > 0) loadSpotData(currentSpotIndex.value - 1);
                 }
             };
 
-            // --- CRUD ---
             const cancelQuickAdd = () => { showQuickAddModal.value = false; tempCoords.value = null; };
             const confirmQuickAdd = () => {
                 if (!tempCoords.value) return;
@@ -552,34 +386,26 @@
                 isEditingDetail.value = false;
             };
             const deleteSpot = () => { if (confirm('確定要刪除？')) { spots.value = spots.value.filter(s => s.id !== detailForm.id); saveToLocal(); closeDetailModal(); } };
-
-            // --- Images ---
-            const addImageUrl = () => { if (tempImageUrl.value) { detailForm.images.push(tempImageUrl.value); tempImageUrl.value = ''; } };
             const handleFileUpload = async (e) => {
                 const file = e.target.files[0]; if (!file) return; isProcessingImage.value = true;
                 try { const data = await compressImage(file); detailForm.images.push(data); } 
                 catch (e) { alert("失敗"); } finally { isProcessingImage.value = false; e.target.value = ''; }
             };
-            const removeImage = (idx) => detailForm.images.splice(idx, 1);
 
-            // Helpers
             const getColorCode = (n) => ({ pink: '#EC4899', blue: '#3B82F6', green: '#10B981', yellow: '#F59E0B', purple: '#8B5CF6' }[n]);
             const getCategoryIcon = (c) => ({ spot: 'fa-camera', food: 'fa-utensils', shopping: 'fa-shopping-bag' }[c]);
             const getCategoryName = (c) => ({ spot: '景點', food: '餐廳', shopping: '購物' }[c]);
             const getCategoryColorClass = (c) => ({ spot: 'bg-pink-50 border-pink-200 text-pink-500', food: 'bg-orange-50 border-orange-200 text-orange-500', shopping: 'bg-blue-50 border-blue-200 text-blue-500' }[c]);
-            const getCategoryBgClass = (c) => ({ spot: 'bg-pink-500', food: 'bg-orange-500', shopping: 'bg-blue-500' }[c]);
 
             return { 
-                spots, isAddingMode, isProcessingImage, showQuickAddModal, quickForm, showDetailModal, detailForm, isEditingDetail, selectedSpot, currentSpotIndex, tempImageUrl, fileInput, mapContentRef, isDraggingSpotId,
+                spots, isAddingMode, isProcessingImage, showQuickAddModal, quickForm, showDetailModal, detailForm, isEditingDetail, selectedSpot, currentSpotIndex, fileInput, mapContentRef, isDraggingSpotId,
                 toggleAddMode, handleMapClick, handlePinStart, handleContainerMove, handleContainerEnd, handlePinClick,
                 cancelQuickAdd, confirmQuickAdd, closeDetailModal, startEditing, cancelEditing, saveDetailChanges, deleteSpot,
-                addImageUrl, removeImage, handleFileUpload, getColorCode, getCategoryIcon, getCategoryName, getCategoryColorClass, getCategoryBgClass, nextSpot, prevSpot, handleSwipeStart, handleSwipeEnd,
-                zoomInSubway, zoomOutSubway, resetSubway
+                handleFileUpload, getColorCode, getCategoryIcon, getCategoryName, getCategoryColorClass, handleSwipeStart, handleSwipeEnd
             };
         }
     }).mount('#app');
 </script>
 </body>
 </html>
-
 
