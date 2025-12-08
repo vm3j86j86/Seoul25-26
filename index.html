@@ -14,13 +14,6 @@
     <!-- Panzoom Library -->
     <script src="https://unpkg.com/@panzoom/panzoom@4.5.1/dist/panzoom.min.js"></script>
     
-    <!-- PDF.js Library (For rendering PDF as Canvas) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
-        // 設定 PDF.js Worker
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    </script>
-    
     <!-- Icons & Fonts -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
@@ -87,8 +80,7 @@
         /* Zoom Container */
         #subway-panzoom-container { will-change: transform; cursor: grab; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
         /* 確保圖片和Canvas都能被高品質縮放 */
-        #subway-panzoom-container img, 
-        #subway-panzoom-container canvas { 
+        #subway-panzoom-container img { 
             width: 100%; 
             height: auto; 
             object-fit: contain; 
@@ -96,9 +88,6 @@
             max-width: none; 
         }
         #subway-panzoom-container:active { cursor: grabbing; }
-        
-        /* Loading Overlay for PDF */
-        .pdf-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.8); z-index: 30; }
     </style>
 </head>
 <body>
@@ -151,28 +140,15 @@
             </div>
         </div>
 
-        <!-- SECTION 2: Subway Area (Fixed Height, Zoomable, Supports PDF) -->
+        <!-- SECTION 2: Subway Area (Fixed Height, Zoomable, PNG Only) -->
         <div class="h-[40vh] w-full bg-gray-100 overflow-hidden relative border-t border-gray-200 z-10">
-            
-            <!-- Loading Indicator -->
-            <div v-if="isPdfLoading" class="pdf-loading">
-                <div class="text-pink-500 font-bold text-sm flex flex-col items-center">
-                    <i class="fas fa-circle-notch fa-spin text-2xl mb-2"></i>
-                    載入地鐵圖中...
-                </div>
-            </div>
-
             <!-- Panzoom Container -->
             <div id="subway-panzoom-container">
-                <!-- Canvas for PDF Render -->
-                <canvas v-show="usePdf" id="pdf-canvas"></canvas>
-                
-                <!-- Fallback Image (shown if PDF fails or not used) -->
-                <img v-show="!usePdf" 
-                     src="subway.png" 
+                <!-- Direct PNG Image -->
+                <img src="image.png" 
                      alt="Subway Map" 
                      @error="handleImgError"
-                     ref="fallbackImgRef">
+                     ref="subwayImgRef">
             </div>
         </div>
 
@@ -209,7 +185,7 @@
                     </div>
                     <div class="flex gap-3 mt-6">
                         <button @click="cancelQuickAdd" class="flex-1 py-3 rounded-xl font-bold text-gray-500 bg-gray-100 text-sm">取消</button>
-                        <button @click="confirmQuickAdd" class="flex-1 py-3 rounded-xl font-bold text-white bg-pink-500 shadow-lg shadow-pink-200 text-sm" :disabled="!quickForm.name">建立</button>
+                        <button @click="confirmQuickAdd" class="flex-1 py-3 rounded-xl font-bold text-white bg-pink-50 shadow-lg shadow-pink-200 text-sm" :disabled="!quickForm.name">建立</button>
                     </div>
                 </div>
             </div>
@@ -280,50 +256,9 @@
             const touchStartX = ref(0);
             const touchEndX = ref(0);
             
-            // PDF & Panzoom State
+            // Panzoom State
             let subwayPanzoom = null;
-            const usePdf = ref(false);
-            const isPdfLoading = ref(true);
-            const fallbackImgRef = ref(null);
-
-            // PDF Rendering Logic
-            const renderPdf = async () => {
-                const url = 'subway.pdf';
-                const canvas = document.getElementById('pdf-canvas');
-                if (!canvas) return;
-
-                try {
-                    const loadingTask = pdfjsLib.getDocument(url);
-                    const pdf = await loadingTask.promise;
-                    const page = await pdf.getPage(1);
-                    
-                    // High resolution scale
-                    const scale = 3.0; 
-                    const viewport = page.getViewport({ scale: scale });
-                    
-                    const context = canvas.getContext('2d');
-                    canvas.height = viewport.height;
-                    canvas.width = viewport.width;
-
-                    const renderContext = {
-                        canvasContext: context,
-                        viewport: viewport
-                    };
-                    
-                    await page.render(renderContext).promise;
-                    usePdf.value = true;
-                    isPdfLoading.value = false;
-                    
-                    // Init panzoom AFTER render
-                    nextTick(initSubwayPanzoom);
-                } catch (error) {
-                    console.error('Error rendering PDF, switching to image fallback:', error);
-                    usePdf.value = false;
-                    isPdfLoading.value = false;
-                    // Init panzoom on image
-                    nextTick(initSubwayPanzoom);
-                }
-            };
+            const subwayImgRef = ref(null);
             
             const handleImgError = (e) => {
                 // Fallback to high-res Wikipedia image if local image fails
@@ -348,8 +283,8 @@
                 const savedData = localStorage.getItem('seoul_travel_app_data');
                 if (savedData) spots.value = JSON.parse(savedData);
                 
-                // Try rendering PDF first
-                renderPdf();
+                // Init panzoom for the PNG
+                initSubwayPanzoom();
             });
 
             // Coords logic
@@ -487,12 +422,11 @@
                 toggleAddMode, handleMapClick, handlePinStart, handleContainerMove, handleContainerEnd, handlePinClick,
                 cancelQuickAdd, confirmQuickAdd, closeDetailModal, startEditing, cancelEditing, saveDetailChanges, deleteSpot,
                 handleFileUpload, getColorCode, getCategoryIcon, getCategoryName, getCategoryColorClass, handleSwipeStart, handleSwipeEnd,
-                usePdf, isPdfLoading, handleImgError, fallbackImgRef
+                handleImgError, subwayImgRef
             };
         }
     }).mount('#app');
 </script>
 </body>
 </html>
-
 
