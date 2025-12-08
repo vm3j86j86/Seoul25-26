@@ -35,7 +35,7 @@
         }
         
         /* Pin Styles */
-        .pin-marker { position: absolute; transform: translate(-50%, -100%); cursor: pointer; z-index: 10; display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
+        .pin-marker { position: absolute; transform: translate(-50%, -100%); cursor: pointer; z-index: 10; display: flex; flex-direction: column; align-items: center; pointer-events: auto; user-select: none; -webkit-user-select: none; }
         .pin-icon-box { width: 44px; height: 44px; background: white; border-radius: 50%; border: 3px solid white; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
         .pin-icon-box img { width: 100%; height: 100%; object-fit: cover; }
         .pin-tail { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid white; margin-top: -2px; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.1)); }
@@ -51,8 +51,13 @@
         @keyframes bounce-soft { 0%, 100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, -108%); } }
         .animate-bounce-soft { animation: bounce-soft 2s infinite ease-in-out; }
 
-        /* 拖曳時的 Ghost Pin 動畫 */
-        .ghost-pin { opacity: 0.8; z-index: 50; pointer-events: none; transform: translate(-50%, -120%) scale(1.1); transition: transform 0.1s; }
+        /* 拖曳中的 Pin 樣式 */
+        .pin-dragging { z-index: 100 !important; transition: none !important; }
+        .pin-dragging .pin-icon-box { transform: scale(1.2); box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        .pin-dragging.animate-bounce-soft { animation: none; } /* 拖曳時停止跳動 */
+
+        /* 十字游標 (新增模式) */
+        .cursor-crosshair-custom { cursor: crosshair; }
         
         .modal-enter-active, .modal-leave-active { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
         .modal-enter-from, .modal-leave-to { opacity: 0; transform: scale(0.9); }
@@ -72,27 +77,29 @@
             <i class="fas fa-plus text-xl"></i>
         </button>
 
-        <!-- 新增模式提示 -->
-        <div v-if="isAddingMode" class="fixed top-5 left-20 z-50 bg-gray-800/90 backdrop-blur text-white px-4 py-1.5 rounded-full shadow-xl text-xs font-bold flex items-center gap-2 animate-bounce w-max pointer-events-none">
-            <i class="fas fa-fingerprint text-yellow-400"></i> <span>長按 0.2秒 拖曳新增</span>
-        </div>
+        <!-- 已移除提示框 -->
 
         <!-- Map Layer -->
         <div class="relative w-full h-full bg-white overflow-hidden" id="scene-container">
             
             <div id="panzoom-area" class="w-full flex flex-col origin-top-left bg-white min-h-full">
                 
+                <!-- 
+                    地圖內容容器
+                    事件綁定：
+                    1. @click: 處理「新增模式」下的單擊新增
+                    2. @mousemove/touchmove/mouseup/touchend: 處理「長按後」的圖標拖曳
+                -->
                 <div id="map-content" 
                      class="relative w-full pb-20 select-none"
-                     :class="{'cursor-grab': isAddingMode}"
+                     :class="{'cursor-crosshair-custom': isAddingMode}"
                      ref="mapContentRef"
-                     @touchstart="handleStart"
-                     @touchmove="handleMove"
-                     @touchend="handleEnd"
-                     @mousedown="handleStart"
-                     @mousemove="handleMove"
-                     @mouseup="handleEnd"
-                     @mouseleave="handleEnd">
+                     @click="handleMapClick"
+                     @mousemove="handleContainerMove"
+                     @touchmove="handleContainerMove"
+                     @mouseup="handleContainerEnd"
+                     @touchend="handleContainerEnd"
+                     @mouseleave="handleContainerEnd">
                     
                     <!-- map.png -->
                     <img src="map.png" class="w-full h-auto block pointer-events-none" alt="Seoul Map">
@@ -104,14 +111,18 @@
                     <img src="subway.png" class="w-full h-auto block pointer-events-none" alt="Korea Subway Map">
 
                     <!-- Existing Pins -->
-                    <!-- 修改：移除直接的 click 跳轉，改用 handlePinClick 處理單擊/雙擊 -->
+                    <!-- 
+                        Pin 事件綁定：
+                        1. mousedown/touchstart: 開始偵測長按
+                        2. click: 處理單擊(詳情)/雙擊(編輯)，需檢查是否剛拖曳完
+                    -->
                     <div v-for="spot in spots" :key="spot.id"
-                         class="pin-marker animate-bounce-soft"
-                         :class="[`pin-theme-${spot.theme}`]"
+                         class="pin-marker"
+                         :class="[`pin-theme-${spot.theme}`, isDraggingSpotId === spot.id ? 'pin-dragging' : 'animate-bounce-soft']"
                          :style="{ top: spot.top, left: spot.left }"
-                         @touchstart.stop
-                         @mousedown.stop
-                         @click.stop="handlePinClick(spot)">
+                         @touchstart="handlePinStart(spot, $event)"
+                         @mousedown="handlePinStart(spot, $event)"
+                         @click.stop="handlePinClick(spot, $event)">
                         <div class="pin-icon-box">
                             <img v-if="spot.images && spot.images.length > 0" :src="spot.images[0]" class="w-full h-full object-cover">
                             <i v-else class="fas text-lg" :class="{
@@ -122,16 +133,6 @@
                         </div>
                         <div class="pin-tail"></div>
                         <div class="pin-label">{{ spot.name }}</div>
-                    </div>
-
-                    <!-- Ghost Pin (拖曳時顯示) -->
-                    <div v-if="tempPin" 
-                         class="pin-marker ghost-pin pin-theme-pink"
-                         :style="{ top: tempPin.top, left: tempPin.left }">
-                        <div class="pin-icon-box bg-white">
-                            <i class="fas fa-map-marker-alt text-xl text-pink-500"></i>
-                        </div>
-                        <div class="pin-tail"></div>
                     </div>
 
                 </div>
@@ -145,7 +146,6 @@
             <div v-if="showModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-5" @click.self="cancelModal">
                 <div class="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl transform transition-all">
                     
-                    <!-- 標題：根據模式變化 -->
                     <h3 class="text-lg font-bold text-gray-800 mb-4 text-center">
                         {{ isEditing ? '編輯地標' : '新增地標' }}
                     </h3>
@@ -169,7 +169,6 @@
                     </div>
                     
                     <div class="flex gap-3 mt-6">
-                        <!-- 刪除按鈕 (僅編輯模式顯示) -->
                         <button v-if="isEditing" @click="deleteSpot" class="w-12 py-3 rounded-xl font-bold text-white bg-red-500 shadow-lg shadow-red-200 text-sm flex items-center justify-center">
                             <i class="fas fa-trash-alt"></i>
                         </button>
@@ -193,10 +192,10 @@
             const spots = ref([]);
             const isAddingMode = ref(false);
             const showModal = ref(false);
-            const isEditing = ref(false); // 新增：是否為編輯模式
-            const editingSpotId = ref(null); // 新增：正在編輯的 ID
+            const isEditing = ref(false);
+            const editingSpotId = ref(null);
             
-            const tempPin = ref(null);
+            const tempCoords = ref(null); // 用於儲存點擊位置
             const mapContentRef = ref(null);
             
             const quickForm = reactive({ name: '', theme: 'pink', category: 'spot' });
@@ -204,14 +203,16 @@
             // Panzoom 實例
             let panzoomInstance = null;
             
-            // 拖曳邏輯變數
+            // 拖曳 & 長按邏輯變數
+            const isDraggingSpotId = ref(null); // 當前正在拖曳的 Spot ID
             let longPressTimer = null;
-            let isDraggingPin = false;
             let startX = 0, startY = 0;
-            const LONG_PRESS_DURATION = 200;
-            const MOVE_THRESHOLD = 5;
+            let hasDragged = false; // 標記是否發生過拖曳 (用於防止拖曳結束觸發點擊)
+            
+            const LONG_PRESS_DURATION = 200; // 0.2秒
+            const MOVE_THRESHOLD = 5; // 手指抖動容錯值
 
-            // 雙擊偵測變數
+            // 雙擊偵測
             let clickCount = 0;
             let clickTimer = null;
 
@@ -238,37 +239,154 @@
                 window.addEventListener('resize', () => setTimeout(initPanzoom, 100));
             });
 
-            // --- 單擊 vs 雙擊 處理邏輯 ---
-            const handlePinClick = (spot) => {
-                if (isAddingMode.value) return; // 新增模式下不處理
+            // 工具函數：取得事件座標
+            const getEventCoords = (e) => {
+                if (e.touches && e.touches.length > 0) {
+                    return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+                }
+                return { clientX: e.clientX, clientY: e.clientY };
+            };
+
+            // 工具函數：計算相對百分比座標
+            const calculateRelativeCoords = (clientX, clientY) => {
+                const rect = mapContentRef.value.getBoundingClientRect();
+                const x = clientX - rect.left;
+                const y = clientY - rect.top;
+                return {
+                    left: (x / rect.width * 100).toFixed(2) + '%',
+                    top: (y / rect.height * 100).toFixed(2) + '%',
+                };
+            };
+
+            // --- 1. 新增功能：單擊地圖 ---
+            const toggleAddMode = () => {
+                isAddingMode.value = !isAddingMode.value;
+                showModal.value = false;
+            };
+
+            const handleMapClick = (e) => {
+                // 只有在新增模式下，且沒有正在拖曳圖標時，才觸發新增
+                if (!isAddingMode.value) return;
+                if (hasDragged) return; 
+
+                const { clientX, clientY } = getEventCoords(e);
+                tempCoords.value = calculateRelativeCoords(clientX, clientY);
+
+                // 開啟新增視窗
+                isEditing.value = false;
+                editingSpotId.value = null;
+                quickForm.name = '';
+                quickForm.theme = 'pink';
+                quickForm.category = 'spot';
+                showModal.value = true;
+            };
+
+            // --- 2. 移動功能：長按圖標拖曳 ---
+            
+            // 按下圖標：開始偵測長按
+            const handlePinStart = (spot, e) => {
+                // 不阻止冒泡 (讓 Panzoom 也能收到)，但如果長按觸發了，我們再攔截
+                const { clientX, clientY } = getEventCoords(e);
+                startX = clientX;
+                startY = clientY;
+                hasDragged = false;
+                
+                // 設定長按計時器
+                longPressTimer = setTimeout(() => {
+                    // 長按時間到！開始拖曳模式
+                    isDraggingSpotId.value = spot.id;
+                    hasDragged = true; // 標記為拖曳行為
+                    
+                    // 震動回饋
+                    if (navigator.vibrate) navigator.vibrate(50);
+                    
+                    // 暫停 Panzoom，避免地圖跟著動
+                    if (panzoomInstance) panzoomInstance.setOptions({ disablePan: true });
+                    
+                }, LONG_PRESS_DURATION);
+            };
+
+            // 移動 (在容器上監聽，保證拖曳流暢)
+            const handleContainerMove = (e) => {
+                const { clientX, clientY } = getEventCoords(e);
+
+                if (isDraggingSpotId.value) {
+                    // 正在拖曳圖標
+                    e.preventDefault(); // 防止滾動
+                    e.stopPropagation();
+                    
+                    // 更新該圖標的位置
+                    const spot = spots.value.find(s => s.id === isDraggingSpotId.value);
+                    if (spot) {
+                        const coords = calculateRelativeCoords(clientX, clientY);
+                        spot.top = coords.top;
+                        spot.left = coords.left;
+                    }
+                } else {
+                    // 還沒觸發長按，檢查是否移動超過閾值 (若是，則取消長按偵測，視為滑動地圖)
+                    if (longPressTimer) {
+                        const moveX = Math.abs(clientX - startX);
+                        const moveY = Math.abs(clientY - startY);
+                        if (moveX > MOVE_THRESHOLD || moveY > MOVE_THRESHOLD) {
+                            clearTimeout(longPressTimer);
+                            longPressTimer = null;
+                        }
+                    }
+                }
+            };
+
+            // 放開
+            const handleContainerEnd = () => {
+                // 清除長按計時器
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+
+                if (isDraggingSpotId.value) {
+                    // 拖曳結束
+                    isDraggingSpotId.value = null;
+                    
+                    // 恢復 Panzoom
+                    if (panzoomInstance) panzoomInstance.setOptions({ disablePan: false });
+                    
+                    // 儲存新位置
+                    localStorage.setItem('seoul_travel_app_data', JSON.stringify(spots.value));
+                    
+                    // 注意：這裡不設定 hasDragged = false，保留它為 true
+                    // 這樣 click 事件處理器就知道「剛才發生了拖曳」，而不是點擊
+                    // 我們利用 setTimeout 在下一個 tick 清除它，或者讓 click handler 自己判斷
+                    setTimeout(() => { hasDragged = false; }, 100);
+                }
+            };
+
+            // --- 3. 點擊圖標：詳情與編輯 ---
+            const handlePinClick = (spot, e) => {
+                // 如果剛剛發生了拖曳，則忽略這次「點擊」(因為這是拖曳結束時的 mouseup 觸發的)
+                if (hasDragged) {
+                    hasDragged = false;
+                    return;
+                }
+
+                if (isAddingMode.value) return; // 新增模式下不處理點擊詳情
 
                 clickCount++;
                 if (clickCount === 1) {
-                    // 第一次點擊，設定計時器
                     clickTimer = setTimeout(() => {
-                        // 時間到，確認為單擊 -> 跳轉
                         clickCount = 0;
                         window.location.href = `detail.html?id=${spot.id}`;
-                    }, 250); // 250ms 延遲
+                    }, 250); 
                 } else {
-                    // 在時間內第二次點擊 -> 雙擊 -> 編輯
                     clearTimeout(clickTimer);
                     clickCount = 0;
                     openEditModal(spot);
                 }
             };
 
-            const toggleAddMode = () => {
-                isAddingMode.value = !isAddingMode.value;
-                showModal.value = false;
-                tempPin.value = null;
-            };
-
-            // --- 編輯 / 刪除 邏輯 ---
+            // --- 編輯 / 刪除 / 儲存 ---
             const openEditModal = (spot) => {
                 isEditing.value = true;
                 editingSpotId.value = spot.id;
-                // 填入現有資料
                 quickForm.name = spot.name;
                 quickForm.theme = spot.theme;
                 quickForm.category = spot.category;
@@ -284,87 +402,23 @@
                 }
             };
 
-            // --- 長按拖曳新增邏輯 (保持不變) ---
-            const getEventCoords = (e) => {
-                if (e.touches && e.touches.length > 0) {
-                    return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
-                }
-                return { clientX: e.clientX, clientY: e.clientY };
-            };
-
-            const calculateRelativeCoords = (clientX, clientY) => {
-                const rect = mapContentRef.value.getBoundingClientRect();
-                const x = clientX - rect.left;
-                const y = clientY - rect.top;
-                return {
-                    left: (x / rect.width * 100).toFixed(2) + '%',
-                    top: (y / rect.height * 100).toFixed(2) + '%',
-                };
-            };
-
-            const handleStart = (e) => {
-                if (!isAddingMode.value) return;
-                const { clientX, clientY } = getEventCoords(e);
-                startX = clientX; startY = clientY; isDraggingPin = false;
-
-                longPressTimer = setTimeout(() => {
-                    isDraggingPin = true;
-                    if (navigator.vibrate) navigator.vibrate(50);
-                    if (panzoomInstance) panzoomInstance.setOptions({ disablePan: true });
-                    tempPin.value = calculateRelativeCoords(clientX, clientY);
-                }, LONG_PRESS_DURATION);
-            };
-
-            const handleMove = (e) => {
-                if (!isAddingMode.value) return;
-                const { clientX, clientY } = getEventCoords(e);
-                if (isDraggingPin) {
-                    e.preventDefault(); e.stopPropagation();
-                    tempPin.value = calculateRelativeCoords(clientX, clientY);
-                } else {
-                    if (Math.abs(clientX - startX) > MOVE_THRESHOLD || Math.abs(clientY - startY) > MOVE_THRESHOLD) {
-                        clearTimeout(longPressTimer);
-                    }
-                }
-            };
-
-            const handleEnd = () => {
-                clearTimeout(longPressTimer);
-                if (isDraggingPin) {
-                    isDraggingPin = false;
-                    if (panzoomInstance) panzoomInstance.setOptions({ disablePan: false });
-                    
-                    // 開啟新增視窗
-                    isEditing.value = false; // 確保不是編輯模式
-                    editingSpotId.value = null;
-                    quickForm.name = '';
-                    quickForm.theme = 'pink';
-                    quickForm.category = 'spot';
-                    showModal.value = true;
-                }
-            };
-
-            // --- 確認與取消 ---
             const confirmAction = () => {
                 if (isEditing.value) {
-                    // 編輯模式：更新現有地標
                     const spot = spots.value.find(s => s.id === editingSpotId.value);
                     if (spot) {
                         spot.name = quickForm.name;
                         spot.theme = quickForm.theme;
                         spot.category = quickForm.category;
-                        // 不更新座標 (top/left)
                     }
                 } else {
-                    // 新增模式：建立新地標
-                    if (!tempPin.value) return;
+                    if (!tempCoords.value) return;
                     const newSpot = {
                         id: Date.now(),
                         name: quickForm.name,
                         theme: quickForm.theme,
                         category: quickForm.category,
-                        top: tempPin.value.top,
-                        left: tempPin.value.left,
+                        top: tempCoords.value.top,
+                        left: tempCoords.value.left,
                         date: new Date().toLocaleDateString(),
                         images: [],
                         description: '', hours: '', url: '', mapUrl: ''
@@ -375,19 +429,19 @@
                 localStorage.setItem('seoul_travel_app_data', JSON.stringify(spots.value));
                 showModal.value = false;
                 isAddingMode.value = false;
-                tempPin.value = null;
+                tempCoords.value = null;
             };
 
             const cancelModal = () => { 
                 showModal.value = false; 
-                tempPin.value = null; 
+                tempCoords.value = null; 
             };
             
             const getColorCode = (n) => ({ pink: '#EC4899', blue: '#3B82F6', green: '#10B981', yellow: '#F59E0B', purple: '#8B5CF6' }[n]);
 
             return { 
-                spots, isAddingMode, showModal, isEditing, quickForm, tempPin, mapContentRef,
-                toggleAddMode, handleStart, handleMove, handleEnd, handlePinClick,
+                spots, isAddingMode, showModal, isEditing, quickForm, mapContentRef, isDraggingSpotId,
+                toggleAddMode, handleMapClick, handlePinStart, handleContainerMove, handleContainerEnd, handlePinClick,
                 confirmAction, cancelModal, deleteSpot, getColorCode 
             };
         }
