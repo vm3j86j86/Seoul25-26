@@ -77,9 +77,10 @@
         </div>
 
         <!-- Map Layer (可縮放區域) -->
-        <!-- 注意：overflow-hidden 很重要，因為縮放由 panzoom 控制 -->
-        <div class="relative w-full h-full bg-gray-200 overflow-hidden" id="scene-container">
+        <!-- 修改：將背景改為白色 bg-white，避免縮放運算誤差時露出灰色底 -->
+        <div class="relative w-full h-full bg-white overflow-hidden" id="scene-container">
             
+            <!-- panzoom-area -->
             <div id="panzoom-area" class="w-full flex flex-col origin-top-left bg-white min-h-full">
                 
                 <!-- 1. 首爾地圖區 (包含 Pins) -->
@@ -166,26 +167,54 @@
             // Panzoom 實例
             let panzoomInstance = null;
 
-            onMounted(() => {
-                const savedData = localStorage.getItem('seoul_travel_app_data');
-                if (savedData) spots.value = JSON.parse(savedData);
-
-                // 初始化 Panzoom
+            // 初始化 Panzoom 的函數
+            const initPanzoom = () => {
                 const elem = document.getElementById('panzoom-area');
+                if (!elem) return;
+
+                // 先銷毀舊的 (如果有)
+                if (panzoomInstance) {
+                    panzoomInstance.destroy();
+                }
+
                 panzoomInstance = Panzoom(elem, {
                     maxScale: 4,      // 最大放大倍率
                     minScale: 1,      // 最小倍率 (不縮小)
                     startScale: 1,
-                    contain: 'outside', // 限制邊界
+                    contain: 'outside', // 限制邊界，圖片必須覆蓋容器
                     cursor: 'default',
-                    // 關鍵：這讓 click 事件能在拖曳結束時正常觸發，避免拖曳被誤判為點擊
+                    // 關鍵：這讓 click 事件能在拖曳結束時正常觸發
                     handleStartEvent: (e) => {
-                        e.preventDefault(); // 防止圖片拖曳的預設行為
+                        e.preventDefault(); 
                     }
                 });
 
                 // 支援滑鼠滾輪縮放
-                elem.parentElement.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+                if (elem.parentElement) {
+                    elem.parentElement.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+                }
+            };
+
+            onMounted(() => {
+                const savedData = localStorage.getItem('seoul_travel_app_data');
+                if (savedData) spots.value = JSON.parse(savedData);
+
+                // 修改：確保圖片載入完成後再初始化 Panzoom
+                // 這是解決「底部留白」問題的關鍵，因為 Panzoom 需要知道圖片的正確高度來計算邊界
+                if (document.readyState === 'complete') {
+                    initPanzoom();
+                } else {
+                    window.addEventListener('load', initPanzoom);
+                }
+
+                // 額外保險：如果視窗大小改變，重新計算 Panzoom 尺寸
+                window.addEventListener('resize', () => {
+                   if (panzoomInstance) {
+                       // Panzoom 沒有內建 resize 方法，通常建議在 resize 時重置或重新計算
+                       // 這裡簡單調用 setTimeout 讓它有機會重繪
+                       setTimeout(initPanzoom, 100); 
+                   } 
+                });
             });
 
             const toggleAddMode = () => {
@@ -196,7 +225,6 @@
                     if(panzoomInstance) panzoomInstance.bind();
                 } else {
                     // 進入新增模式時，暫時保留 Panzoom，因為使用者可能需要縮放來精準點擊
-                    // 如果覺得操作衝突，可以在這裡 panzoomInstance.destroy() 暫停，但建議保留
                 }
             };
 
@@ -243,7 +271,6 @@
             const cancelAdd = () => { showModal.value = false; tempCoords.value = null; };
             const goToDetail = (id) => {
                 // 防止拖曳時觸發點擊 (Panzoom 的 click 事件處理有時比較敏感)
-                // 這裡簡單處理：直接跳轉
                 window.location.href = `detail.html?id=${id}`;
             };
             
@@ -255,5 +282,4 @@
 </script>
 </body>
 </html>
-
 
