@@ -74,24 +74,28 @@
             stroke-linecap: round;
             stroke-linejoin: round;
         }
+
+        /* 拍立得效果 */
+        .polaroid {
+            background: white;
+            padding: 10px 10px 30px 10px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+            transform: rotate(-2deg);
+            transition: transform 0.3s;
+        }
+        .polaroid:hover {
+            transform: rotate(0deg) scale(1.02);
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
 
-    <!-- 
-        修改說明：
-        1. h-screen 改為 h-[100dvh]：更能適應手機瀏覽器網址列伸縮，防止背景跑版。
-    -->
     <div id="app" class="h-[100dvh] w-screen flex flex-col relative bg-[#ffefd7]">
 
         <!-- ========================================== -->
         <!-- 上半部：互動標記地圖 (50% 高度) -->
         <!-- ========================================== -->
-        <!-- 
-            修改說明：
-            1. h-[55%] 改為 h-1/2 (50%)
-            2. 增加 flex-1 確保彈性佈局穩定
-        -->
         <div 
             ref="topMapContainer"
             class="h-1/2 flex-1 w-full relative overflow-hidden bg-white border-b-4 border-white select-none"
@@ -139,10 +143,7 @@
                         class="w-11 h-11 rounded-full shadow-cute border-2 border-white flex items-center justify-center transition-transform relative"
                         :class="getIconStyle(marker.type).bg"
                     >
-                        <!-- 使用手繪 SVG 組件 -->
                         <doodle-icon :type="marker.type" class="w-6 h-6" :class="getIconStyle(marker.type).text"></doodle-icon>
-                        
-                        <!-- 對話框尾巴 -->
                         <div class="absolute -bottom-1 w-3 h-3 bg-inherit rotate-45 border-r-2 border-b-2 border-white/20"></div>
                     </div>
 
@@ -191,11 +192,6 @@
         <!-- ========================================== -->
         <!-- 下半部：可縮放地鐵圖 (50% 高度) -->
         <!-- ========================================== -->
-        <!-- 
-            修改說明：
-            1. h-[45%] 改為 h-1/2 (50%)
-            2. 增加 flex-1
-        -->
         <div class="h-1/2 flex-1 w-full relative bg-[#ffefd7] overflow-hidden touch-none border-t border-[#f8d9bd]">
             <div 
                 ref="imageContainer"
@@ -235,15 +231,20 @@
                 <div class="bg-[#ffefd7] w-full h-[85vh] sm:h-auto sm:max-h-[80vh] sm:max-w-md sm:rounded-3xl rounded-t-3xl flex flex-col shadow-2xl overflow-hidden transition-all duration-300 border-t-4 border-[#f8d9bd]">
                     
                     <!-- 視窗標題列 -->
-                    <div class="flex items-center justify-between p-5 border-b border-[#f8d9bd] bg-[#fffbf2]">
+                    <div class="flex items-center justify-between p-4 border-b border-[#f8d9bd] bg-[#fffbf2]">
                         <button v-if="activeTopic" @click="backToTopics" class="text-[#8c4b22] px-2 font-bold active:scale-95 flex items-center">
                             <svg class="doodle-icon w-5 h-5 mr-1" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> 
                             返回
                         </button>
-                        <h3 class="font-bold text-lg text-[#5d4037] flex-1 text-center">
-                            {{ activeTopic ? '詳細筆記' : '選擇主題' }}
+                        <h3 class="font-bold text-lg text-[#5d4037] flex-1 text-center truncate px-2">
+                            {{ activeTopic ? (isEditing ? '編輯筆記 ✏️' : activeTopic.title) : '選擇主題' }}
                         </h3>
-                        <button @click="closeModal" class="text-[#8c4b22] px-2 active:scale-95">
+                        
+                        <!-- 編輯切換按鈕 -->
+                        <button v-if="activeTopic && !isEditing" @click="isEditing = true" class="text-[#8c4b22] px-2 text-sm font-bold bg-[#f8d9bd]/30 rounded-lg py-1 hover:bg-[#f8d9bd]/50">
+                            編輯
+                        </button>
+                        <button v-else @click="closeModal" class="text-[#8c4b22] px-2 active:scale-95">
                             <svg class="doodle-icon w-6 h-6" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         </button>
                     </div>
@@ -294,72 +295,138 @@
                             </div>
                         </div>
 
-                        <!-- LEVEL 2: 詳細資訊編輯 -->
+                        <!-- LEVEL 2: 詳細資訊 (瀏覽模式 / 編輯模式) -->
                         <div v-else class="space-y-5">
-                            <div class="relative group bg-white p-2 pb-8 rounded-sm shadow-md border border-gray-100 rotate-1 transform transition hover:rotate-0">
-                                <div class="w-full h-48 bg-[#f5f5f5] overflow-hidden flex items-center justify-center relative">
-                                    <img v-if="activeTopic.image" :src="activeTopic.image" class="w-full h-full object-cover">
-                                    <div v-else class="text-[#9ca3af] flex flex-col items-center">
-                                        <svg class="doodle-icon w-8 h-8 mb-2 text-[#f8d9bd]" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                                        <span class="text-sm font-medium">新增照片</span>
+                            
+                            <!-- A. 瀏覽模式 (View Mode) -->
+                            <div v-if="!isEditing" class="animate-fade-in space-y-6">
+                                
+                                <!-- 拍立得照片區 -->
+                                <div class="flex justify-center my-4" v-if="activeTopic.image">
+                                    <div class="polaroid w-4/5 max-w-[280px]">
+                                        <div class="aspect-square bg-gray-100 overflow-hidden mb-2">
+                                            <img :src="activeTopic.image" class="w-full h-full object-cover">
+                                        </div>
+                                        <div class="text-center font-handwriting text-gray-500 text-sm">Memory</div>
                                     </div>
-                                    <input type="file" accept="image/*" @change="handleImageUpload" class="absolute inset-0 opacity-0 cursor-pointer z-10">
                                 </div>
-                                <div class="absolute bottom-2 right-4 text-[#9ca3af] text-xs font-handwriting">My Memory</div>
+                                <div v-else class="text-center py-8 bg-white/50 rounded-2xl border border-dashed border-[#f8d9bd] text-[#b49889]">
+                                    <svg class="doodle-icon w-12 h-12 mx-auto mb-2 opacity-50" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                    <p class="text-sm">還沒有照片</p>
+                                </div>
+
+                                <!-- 快捷按鈕區 -->
+                                <div class="grid grid-cols-3 gap-3">
+                                    <a :href="activeTopic.reserveUrl || '#'" target="_blank" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#fffbf2] border-2 border-[#f8d9bd] text-[#8c4b22] transition active:scale-95" :class="!activeTopic.reserveUrl && 'opacity-50 grayscale pointer-events-none'">
+                                        <svg class="doodle-icon w-6 h-6 mb-1" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                        <span class="text-xs font-bold">預約</span>
+                                    </a>
+                                    <a :href="activeTopic.mapUrl || '#'" target="_blank" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#d5e6e0] border-2 border-[#bde0d3] text-[#2c5f4c] transition active:scale-95" :class="!activeTopic.mapUrl && 'opacity-50 grayscale pointer-events-none'">
+                                        <svg class="doodle-icon w-6 h-6 mb-1" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                        <span class="text-xs font-bold">地圖</span>
+                                    </a>
+                                    <a :href="activeTopic.url || '#'" target="_blank" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#f6c0b4] border-2 border-[#ffb3a1] text-[#8a3c3c] transition active:scale-95" :class="!activeTopic.url && 'opacity-50 grayscale pointer-events-none'">
+                                        <svg class="doodle-icon w-6 h-6 mb-1" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                                        <span class="text-xs font-bold">官網</span>
+                                    </a>
+                                </div>
+
+                                <!-- 資訊區 -->
+                                <div class="bg-white rounded-2xl p-4 border border-[#f8d9bd] shadow-sm space-y-3">
+                                    <div class="flex items-start">
+                                        <svg class="doodle-icon w-5 h-5 text-[#f8d9bd] mt-0.5 mr-2 shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                        <div>
+                                            <p class="text-xs text-[#b49889] font-bold">營業時間</p>
+                                            <p class="text-sm text-[#5d4037]">{{ activeTopic.hours || '暫無資訊' }}</p>
+                                        </div>
+                                    </div>
+                                    <hr class="border-dashed border-[#f8d9bd]">
+                                    <div class="flex items-start">
+                                        <svg class="doodle-icon w-5 h-5 text-[#f8d9bd] mt-0.5 mr-2 shrink-0" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                        <div>
+                                            <p class="text-xs text-[#b49889] font-bold">重要筆記</p>
+                                            <p class="text-sm text-[#5d4037] whitespace-pre-wrap">{{ activeTopic.info || '寫點什麼吧...' }}</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">主題名稱</label>
-                                    <input v-model="activeTopic.title" type="text" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] focus:border-[#f6c0b4] outline-none text-[#5d4037]" placeholder="例如：弘大可愛咖啡廳">
+                            <!-- B. 編輯模式 (Edit Mode) -->
+                            <div v-else class="animate-fade-in space-y-5">
+                                <!-- 圖片上傳區 -->
+                                <div class="relative group bg-white p-2 pb-8 rounded-sm shadow-md border border-gray-100 rotate-1 transform transition hover:rotate-0">
+                                    <div class="w-full h-48 bg-[#f5f5f5] overflow-hidden flex items-center justify-center relative">
+                                        <img v-if="activeTopic.image" :src="activeTopic.image" class="w-full h-full object-cover">
+                                        <div v-else class="text-[#9ca3af] flex flex-col items-center">
+                                            <svg class="doodle-icon w-8 h-8 mb-2 text-[#f8d9bd]" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                            <span class="text-sm font-medium">新增照片</span>
+                                        </div>
+                                        <input type="file" accept="image/*" @change="handleImageUpload" class="absolute inset-0 opacity-0 cursor-pointer z-10">
+                                    </div>
+                                    <div class="absolute bottom-2 right-4 text-[#9ca3af] text-xs font-handwriting">My Memory</div>
                                 </div>
 
-                                <div class="grid grid-cols-2 gap-3">
+                                <div class="space-y-4">
                                     <div>
-                                        <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">營業時間</label>
-                                        <input v-model="activeTopic.hours" type="text" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="10:00 - 22:00">
+                                        <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">主題名稱</label>
+                                        <input v-model="activeTopic.title" type="text" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] focus:border-[#f6c0b4] outline-none text-[#5d4037]" placeholder="例如：弘大可愛咖啡廳">
                                     </div>
+
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">營業時間</label>
+                                            <input v-model="activeTopic.hours" type="text" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="10:00 - 22:00">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">預約連結</label>
+                                            <input v-model="activeTopic.reserveUrl" type="text" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="CatchTable...">
+                                        </div>
+                                    </div>
+
                                     <div>
-                                        <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">預約連結</label>
-                                        <input v-model="activeTopic.reserveUrl" type="text" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="CatchTable...">
+                                        <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">地圖連結</label>
+                                        <div class="flex gap-2">
+                                            <input v-model="activeTopic.mapUrl" type="text" class="flex-1 p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="貼上地圖分享連結...">
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div>
-                                    <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">地圖連結</label>
-                                    <div class="flex gap-2">
-                                        <input v-model="activeTopic.mapUrl" type="text" class="flex-1 p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="貼上地圖分享連結...">
-                                        <a v-if="activeTopic.mapUrl" :href="activeTopic.mapUrl" target="_blank" class="px-4 flex items-center bg-[#d5e6e0] text-[#2c5f4c] rounded-xl font-bold text-sm">GO</a>
+                                    <div>
+                                        <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">網站 / IG</label>
+                                        <div class="flex gap-2">
+                                            <input v-model="activeTopic.url" type="text" class="flex-1 p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="https://...">
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div>
-                                    <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">網站 / IG</label>
-                                    <div class="flex gap-2">
-                                        <input v-model="activeTopic.url" type="text" class="flex-1 p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="https://...">
-                                        <a v-if="activeTopic.url" :href="activeTopic.url" target="_blank" class="px-4 flex items-center bg-[#f8d9bd] text-[#8c4b22] rounded-xl font-bold text-sm">Link</a>
+                                    <div>
+                                        <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">重要筆記</label>
+                                        <textarea v-model="activeTopic.info" rows="3" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none resize-none" placeholder="必吃推薦、注意事項..."></textarea>
                                     </div>
-                                </div>
-
-                                <div>
-                                    <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">重要筆記</label>
-                                    <textarea v-model="activeTopic.info" rows="3" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none resize-none" placeholder="必吃推薦、注意事項..."></textarea>
-                                </div>
-                                
-                                <div class="text-right">
-                                    <button @click="deleteTopic" class="text-[#f6c0b4] text-xs hover:text-[#e11d48]">刪除此主題</button>
+                                    
+                                    <div class="text-right">
+                                        <button @click="deleteTopic" class="text-[#f6c0b4] text-xs hover:text-[#e11d48]">刪除此主題</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
+                    <!-- 底部按鈕區 -->
                     <div class="p-4 border-t border-[#f8d9bd] bg-[#fffbf2]">
+                        <!-- 如果正在編輯，顯示完成按鈕 -->
                         <button 
-                            @click="closeModal" 
-                            class="w-full py-3 rounded-2xl font-bold text-[#5d4037] shadow-cute border-2 border-white transform active:scale-95 transition"
-                            :class="activeTopic ? 'bg-[#f8d9bd]' : 'bg-[#d5e6e0]'"
+                            v-if="isEditing"
+                            @click="isEditing = false" 
+                            class="w-full py-3 rounded-2xl font-bold text-[#5d4037] shadow-cute border-2 border-white transform active:scale-95 transition bg-[#f8d9bd] hover:bg-[#ffdab9]"
                         >
-                            {{ activeTopic ? '完成編輯' : '關閉' }}
+                            完成編輯 ✨
+                        </button>
+                        <!-- 如果是瀏覽模式，顯示關閉按鈕 -->
+                        <button 
+                            v-else
+                            @click="closeModal" 
+                            class="w-full py-3 rounded-2xl font-bold text-[#5d4037] shadow-cute border-2 border-white transform active:scale-95 transition bg-[#d5e6e0] hover:bg-[#c1e0d3]"
+                        >
+                            關閉
                         </button>
                     </div>
 
@@ -417,6 +484,7 @@
                 
                 const activeMarker = ref(null);
                 const activeTopic = ref(null);
+                const isEditing = ref(false); // 控制編輯/瀏覽模式
 
                 onMounted(() => {
                     const saved = localStorage.getItem('seoul-map-markers-v3'); 
@@ -448,7 +516,7 @@
 
                 // --- 標記互動邏輯 ---
                 const handleMarkerDown = (e, marker) => {
-                    if (isAddingMode.value) return; // 新增模式下不觸發拖曳/點擊
+                    if (isAddingMode.value) return; 
 
                     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -456,9 +524,8 @@
                     if (longPressTimer) clearTimeout(longPressTimer);
                     dragData.value.startX = clientX;
                     dragData.value.startY = clientY;
-                    dragData.value.markerId = marker.id; // 立即設定當前 ID
+                    dragData.value.markerId = marker.id; 
 
-                    // 設定長按計時器：0.2秒後觸發拖曳
                     longPressTimer = setTimeout(() => {
                         dragData.value.isDragging = true;
                         longPressTimer = null;
@@ -466,13 +533,11 @@
                 };
 
                 const handleMapDragMove = (e) => {
-                    // 如果尚未判定為拖曳，檢查是否手指移動過大 (防手抖)
                     if (!dragData.value.isDragging && longPressTimer) {
                         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                         const moveDist = Math.hypot(clientX - dragData.value.startX, clientY - dragData.value.startY);
                         
-                        // 如果移動超過 10px，取消長按判定 (視為普通滑動)
                         if (moveDist > 10) { 
                             clearTimeout(longPressTimer); 
                             longPressTimer = null; 
@@ -501,9 +566,7 @@
                 };
 
                 const handleMapDragEnd = (e) => {
-                    // 1. 判斷是否為短按 (點擊)
                     if (longPressTimer) {
-                        // 計時器還在跑，代表時間很短 -> 觸發點擊事件
                         clearTimeout(longPressTimer);
                         longPressTimer = null;
                         
@@ -513,7 +576,6 @@
                         }
                     }
 
-                    // 2. 處理拖曳結束
                     if (dragData.value.isDragging) {
                         if (dragData.value.isInTrashZone) {
                             markers.value = markers.value.filter(m => m.id !== dragData.value.markerId);
@@ -556,15 +618,18 @@
                 // ==========================================
                 // 2. 模態框邏輯
                 // ==========================================
-                const selectTopic = (topic) => activeTopic.value = topic;
+                const selectTopic = (topic) => {
+                    activeTopic.value = topic;
+                    isEditing.value = false; // 預設為瀏覽模式
+                };
+                
                 const backToTopics = () => activeTopic.value = null;
                 const closeModal = () => { activeMarker.value = null; activeTopic.value = null; };
 
-                // 直接新增並跳轉編輯
                 const addNewTopic = () => {
                     const newTopic = { 
                         id: Date.now(), 
-                        title: '新筆記', // 預設標題
+                        title: '新筆記', 
                         image: null, 
                         url: '', 
                         mapUrl: '', 
@@ -574,8 +639,8 @@
                     };
                     
                     activeMarker.value.topics.push(newTopic);
-                    // 直接進入該主題的編輯模式
                     activeTopic.value = newTopic;
+                    isEditing.value = true; // 新增時自動進入編輯模式
                 };
 
                 const handleImageUpload = (event) => {
@@ -669,7 +734,8 @@
                     activeMarker, activeTopic, openMarkerModal, selectTopic, backToTopics, closeModal,
                     addNewTopic, handleImageUpload, deleteTopic,
                     imageStyle, resetImageZoom,
-                    startDrag, onDrag, stopDrag, startTouch, onTouch, stopTouch, onWheel
+                    startDrag, onDrag, stopDrag, startTouch, onTouch, stopTouch, onWheel,
+                    isEditing
                 };
             }
         }).mount('#app');
