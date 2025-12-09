@@ -94,28 +94,73 @@
     <div id="app" class="h-[100dvh] w-screen flex flex-col relative bg-[#ffefd7]">
 
         <!-- ========================================== -->
-        <!-- 上半部：互動標記地圖 (50% 高度) -->
+        <!-- 上半部：互動標記地圖 (50% 高度 - 可縮放版) -->
         <!-- ========================================== -->
         <div 
-            ref="topMapContainer"
-            class="h-1/2 flex-1 w-full relative overflow-hidden bg-white border-b-4 border-white select-none"
-            :class="{ 'cursor-crosshair': isAddingMode }"
-            @click="handleMapClick"
-            @mousemove="handleMapDragMove"
-            @touchmove="handleMapDragMove"
-            @mouseup="handleMapDragEnd"
-            @touchend="handleMapDragEnd"
-            @mouseleave="handleMapDragEnd"
+            class="h-1/2 flex-1 w-full relative overflow-hidden bg-white border-b-4 border-white select-none touch-none"
+            :class="{ 'cursor-crosshair': isAddingMode, 'cursor-move': !isAddingMode }"
         >
-            <!-- 地圖底圖 -->
-            <img 
-                src="map.png" 
-                alt="Seoul District Map" 
-                class="w-full h-full object-contain pointer-events-none"
+            <!-- 
+                Zoom Wrapper: 
+                這一層負責處理縮放與位移。
+                重要的是：地圖圖片(img)與標記(markers)都在同一層，
+                這樣縮放時相對位置才不會跑掉。
+            -->
+            <div 
+                ref="topMapContainer"
+                class="w-full h-full origin-center will-change-transform"
+                :style="topMapStyle"
+                @mousedown="startTopMapDrag"
+                @touchstart="startTopMapTouch"
+                @wheel.prevent="onTopMapWheel"
+                @click="handleMapClick" 
             >
+                <!-- 地圖底圖 -->
+                <img 
+                    src="map.png" 
+                    alt="Seoul District Map" 
+                    class="w-full h-full object-contain pointer-events-none select-none block"
+                    draggable="false"
+                >
 
-            <!-- 1. 左上角新增按鈕 (手繪 +) -->
-            <div class="absolute top-4 left-4 z-10">
+                <!-- 地圖上的標記 (Markers) -->
+                <!-- 
+                     注意：這些標記現在位於 transform 層內部。
+                     left/top 使用 % 定位，相對於 transform 層的大小。
+                     因為 transform 層會跟著圖片一起縮放，所以 % 定位依然準確。
+                -->
+                <transition-group name="marker">
+                    <div 
+                        v-for="marker in markers" 
+                        :key="marker.id"
+                        class="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group z-20"
+                        :class="{ 'dragging-marker': dragData.isDragging && dragData.markerId === marker.id }"
+                        :style="{ left: marker.x + '%', top: marker.y + '%' }"
+                        @mousedown.stop="handleMarkerDown($event, marker)"
+                        @touchstart.stop="handleMarkerDown($event, marker)"
+                    >
+                        <!-- 圖標本體 -->
+                        <div 
+                            class="w-11 h-11 rounded-full shadow-cute border-2 border-white flex items-center justify-center transition-transform relative"
+                            :class="getIconStyle(marker.type).bg"
+                        >
+                            <doodle-icon :type="marker.type" class="w-6 h-6" :class="getIconStyle(marker.type).text"></doodle-icon>
+                            <div class="absolute -bottom-1 w-3 h-3 bg-inherit rotate-45 border-r-2 border-b-2 border-white/20"></div>
+                        </div>
+
+                        <!-- 標記名稱 -->
+                        <div v-show="!(dragData.isDragging && dragData.markerId === marker.id)" 
+                             class="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-white/90 px-2 py-1 rounded-xl text-xs font-bold shadow-sm whitespace-nowrap text-[#5d4037] pointer-events-none border border-[#f8d9bd]">
+                            {{ marker.topics.length > 0 ? marker.topics[0].title : '新地點' }}
+                        </div>
+                    </div>
+                </transition-group>
+            </div>
+
+            <!-- UI 層：固定在畫面上的按鈕 (不受縮放影響) -->
+            
+            <!-- 1. 左上角新增按鈕 -->
+            <div class="absolute top-4 left-4 z-10 pointer-events-auto">
                 <button 
                     @click.stop="toggleAddMode" 
                     class="w-12 h-12 rounded-full shadow-cute border-2 border-white flex items-center justify-center transition-all"
@@ -127,40 +172,19 @@
                 </button>
             </div>
 
-            <!-- 2. 地圖上的標記 (Markers) -->
-            <transition-group name="marker">
-                <div 
-                    v-for="marker in markers" 
-                    :key="marker.id"
-                    class="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group z-20"
-                    :class="{ 'dragging-marker': dragData.isDragging && dragData.markerId === marker.id }"
-                    :style="{ left: marker.x + '%', top: marker.y + '%' }"
-                    @mousedown="handleMarkerDown($event, marker)"
-                    @touchstart="handleMarkerDown($event, marker)"
-                >
-                    <!-- 圖標本體 -->
-                    <div 
-                        class="w-11 h-11 rounded-full shadow-cute border-2 border-white flex items-center justify-center transition-transform relative"
-                        :class="getIconStyle(marker.type).bg"
-                    >
-                        <doodle-icon :type="marker.type" class="w-6 h-6" :class="getIconStyle(marker.type).text"></doodle-icon>
-                        <div class="absolute -bottom-1 w-3 h-3 bg-inherit rotate-45 border-r-2 border-b-2 border-white/20"></div>
-                    </div>
+            <!-- 2. 地圖重置按鈕 (新增) -->
+            <button @click="resetTopMapZoom" class="absolute bottom-4 right-4 bg-white/90 p-3 rounded-full shadow-cute text-[#5d4037] hover:scale-110 transition z-10 backdrop-blur-sm border border-[#f8d9bd] pointer-events-auto">
+                <svg class="doodle-icon w-5 h-5" viewBox="0 0 24 24">
+                    <path d="M8 3v3a2 2 0 01-2 2H3m18 0h-3a2 2 0 01-2-2V3m0 18v-3a2 2 0 012-2h3M3 16h3a2 2 0 012 2v3" />
+                </svg>
+            </button>
 
-                    <!-- 標記名稱 -->
-                    <div v-show="!(dragData.isDragging && dragData.markerId === marker.id)" 
-                         class="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-white/90 px-2 py-1 rounded-xl text-xs font-bold shadow-sm whitespace-nowrap text-[#5d4037] pointer-events-none border border-[#f8d9bd]">
-                        {{ marker.topics.length > 0 ? marker.topics[0].title : '新地點' }}
-                    </div>
-                </div>
-            </transition-group>
-
-            <!-- 3. 拖曳刪除區 (手繪垃圾桶) -->
+            <!-- 3. 拖曳刪除區 -->
             <transition name="trash">
                 <div 
                     v-if="dragData.isDragging" 
                     ref="trashZone"
-                    class="absolute bottom-0 left-0 w-full h-24 bg-red-100/90 flex flex-col items-center justify-center z-50 border-t-2 border-red-300 transition-colors"
+                    class="absolute bottom-0 left-0 w-full h-24 bg-red-100/90 flex flex-col items-center justify-center z-50 border-t-2 border-red-300 transition-colors pointer-events-none"
                     :class="{ 'bg-red-200': dragData.isInTrashZone }"
                 >
                     <svg class="doodle-icon w-8 h-8 mb-1" :class="dragData.isInTrashZone ? 'text-red-600 scale-125 transition-transform' : 'text-red-400'" viewBox="0 0 24 24">
@@ -173,8 +197,8 @@
             <!-- 4. 類型選擇彈出選單 -->
             <div 
                 v-if="showTypeSelector"
-                class="absolute bg-white rounded-2xl shadow-cute p-3 flex gap-3 z-40"
-                :style="{ left: tempMarkerPos.x + '%', top: tempMarkerPos.y + '%', transform: 'translate(-50%, -100%) translateY(-15px)' }"
+                class="absolute bg-white rounded-2xl shadow-cute p-3 flex gap-3 z-40 pointer-events-auto"
+                :style="{ left: typeSelectorPos.x + 'px', top: typeSelectorPos.y + 'px', transform: 'translate(-50%, -100%) translateY(-15px)' }"
             >
                 <button @click.stop="confirmAddMarker('attraction')" class="w-12 h-12 rounded-xl bg-[#d5e6e0] text-[#2c5f4c] hover:bg-[#bde0d3] flex items-center justify-center">
                     <doodle-icon type="attraction" class="w-6 h-6"></doodle-icon>
@@ -229,8 +253,7 @@
             <div v-if="activeMarker" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#5d4037]/20 backdrop-blur-[2px] p-0 sm:p-4" @click.self="closeModal">
                 
                 <div class="bg-[#ffefd7] w-full h-[85vh] sm:h-auto sm:max-h-[80vh] sm:max-w-md sm:rounded-3xl rounded-t-3xl flex flex-col shadow-2xl overflow-hidden transition-all duration-300 border-t-4 border-[#f8d9bd]">
-                    
-                    <!-- 視窗標題列 -->
+                    <!-- Modal 標題 -->
                     <div class="flex items-center justify-between p-4 border-b border-[#f8d9bd] bg-[#fffbf2]">
                         <button v-if="activeTopic" @click="backToTopics" class="text-[#8c4b22] px-2 font-bold active:scale-95 flex items-center">
                             <svg class="doodle-icon w-5 h-5 mr-1" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> 
@@ -239,8 +262,6 @@
                         <h3 class="font-bold text-lg text-[#5d4037] flex-1 text-center truncate px-2">
                             {{ activeTopic ? (isEditing ? '編輯筆記 ✏️' : activeTopic.title) : '選擇主題' }}
                         </h3>
-                        
-                        <!-- 編輯切換按鈕 -->
                         <button v-if="activeTopic && !isEditing" @click="isEditing = true" class="text-[#8c4b22] px-2 text-sm font-bold bg-[#f8d9bd]/30 rounded-lg py-1 hover:bg-[#f8d9bd]/50">
                             編輯
                         </button>
@@ -249,9 +270,8 @@
                         </button>
                     </div>
 
-                    <!-- 視窗內容區 -->
+                    <!-- Modal 內容 -->
                     <div class="flex-1 overflow-y-auto p-5 bg-[#ffefd7] cute-scrollbar">
-                        
                         <!-- LEVEL 1: 主題列表 -->
                         <div v-if="!activeTopic">
                             <div class="text-center mb-6 py-4 bg-white rounded-2xl border border-[#f8d9bd] shadow-sm">
@@ -260,14 +280,8 @@
                                 </div>
                                 <p class="text-[#8c4b22] text-sm font-medium mt-2">包含 {{ activeMarker.topics.length }} 個筆記</p>
                             </div>
-
                             <div class="space-y-3">
-                                <div 
-                                    v-for="topic in activeMarker.topics" 
-                                    :key="topic.id"
-                                    @click="selectTopic(topic)"
-                                    class="flex items-center p-3 bg-white border-2 border-[#f8d9bd] rounded-2xl active:bg-[#fffbf2] transition cursor-pointer group"
-                                >
+                                <div v-for="topic in activeMarker.topics" :key="topic.id" @click="selectTopic(topic)" class="flex items-center p-3 bg-white border-2 border-[#f8d9bd] rounded-2xl active:bg-[#fffbf2] transition cursor-pointer group">
                                     <div class="w-14 h-14 rounded-xl bg-[#f0f0f0] mr-4 overflow-hidden flex-shrink-0 border border-[#e5e7eb] flex items-center justify-center">
                                         <img v-if="topic.image" :src="topic.image" class="w-full h-full object-cover">
                                         <div v-else class="text-[#d1d5db]">
@@ -280,28 +294,17 @@
                                     </div>
                                     <svg class="doodle-icon w-5 h-5 text-[#f8d9bd]" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
                                 </div>
-
-                                <button 
-                                    @click="addNewTopic"
-                                    class="w-full py-4 border-2 border-dashed border-[#f8d9bd] rounded-2xl text-[#8c4b22] hover:bg-[#fffbf2] transition flex items-center justify-center gap-2 font-bold mt-4"
-                                >
-                                    <svg class="doodle-icon w-5 h-5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> 
-                                    新增主題
+                                <button @click="addNewTopic" class="w-full py-4 border-2 border-dashed border-[#f8d9bd] rounded-2xl text-[#8c4b22] hover:bg-[#fffbf2] transition flex items-center justify-center gap-2 font-bold mt-4">
+                                    <svg class="doodle-icon w-5 h-5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> 新增主題
                                 </button>
-                                
-                                <p class="text-center text-xs text-[#b49889] mt-6">
-                                    長按地圖上的圖標可以移動或刪除喔！
-                                </p>
+                                <p class="text-center text-xs text-[#b49889] mt-6">長按地圖上的圖標可以移動或刪除喔！</p>
                             </div>
                         </div>
 
-                        <!-- LEVEL 2: 詳細資訊 (瀏覽模式 / 編輯模式) -->
+                        <!-- LEVEL 2: 詳細資訊 -->
                         <div v-else class="space-y-5">
-                            
-                            <!-- A. 瀏覽模式 (View Mode) -->
+                            <!-- A. 瀏覽模式 -->
                             <div v-if="!isEditing" class="animate-fade-in space-y-6">
-                                
-                                <!-- 拍立得照片區 -->
                                 <div class="flex justify-center my-4" v-if="activeTopic.image">
                                     <div class="polaroid w-4/5 max-w-[280px]">
                                         <div class="aspect-square bg-gray-100 overflow-hidden mb-2">
@@ -314,8 +317,6 @@
                                     <svg class="doodle-icon w-12 h-12 mx-auto mb-2 opacity-50" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                                     <p class="text-sm">還沒有照片</p>
                                 </div>
-
-                                <!-- 快捷按鈕區 -->
                                 <div class="grid grid-cols-3 gap-3">
                                     <a :href="activeTopic.reserveUrl || '#'" target="_blank" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#fffbf2] border-2 border-[#f8d9bd] text-[#8c4b22] transition active:scale-95" :class="!activeTopic.reserveUrl && 'opacity-50 grayscale pointer-events-none'">
                                         <svg class="doodle-icon w-6 h-6 mb-1" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -330,8 +331,6 @@
                                         <span class="text-xs font-bold">官網</span>
                                     </a>
                                 </div>
-
-                                <!-- 資訊區 -->
                                 <div class="bg-white rounded-2xl p-4 border border-[#f8d9bd] shadow-sm space-y-3">
                                     <div class="flex items-start">
                                         <svg class="doodle-icon w-5 h-5 text-[#f8d9bd] mt-0.5 mr-2 shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -350,10 +349,8 @@
                                     </div>
                                 </div>
                             </div>
-
-                            <!-- B. 編輯模式 (Edit Mode) -->
+                            <!-- B. 編輯模式 -->
                             <div v-else class="animate-fade-in space-y-5">
-                                <!-- 圖片上傳區 -->
                                 <div class="relative group bg-white p-2 pb-8 rounded-sm shadow-md border border-gray-100 rotate-1 transform transition hover:rotate-0">
                                     <div class="w-full h-48 bg-[#f5f5f5] overflow-hidden flex items-center justify-center relative">
                                         <img v-if="activeTopic.image" :src="activeTopic.image" class="w-full h-full object-cover">
@@ -365,13 +362,11 @@
                                     </div>
                                     <div class="absolute bottom-2 right-4 text-[#9ca3af] text-xs font-handwriting">My Memory</div>
                                 </div>
-
                                 <div class="space-y-4">
                                     <div>
                                         <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">主題名稱</label>
                                         <input v-model="activeTopic.title" type="text" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] focus:border-[#f6c0b4] outline-none text-[#5d4037]" placeholder="例如：弘大可愛咖啡廳">
                                     </div>
-
                                     <div class="grid grid-cols-2 gap-3">
                                         <div>
                                             <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">營業時間</label>
@@ -382,26 +377,22 @@
                                             <input v-model="activeTopic.reserveUrl" type="text" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="CatchTable...">
                                         </div>
                                     </div>
-
                                     <div>
                                         <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">地圖連結</label>
                                         <div class="flex gap-2">
                                             <input v-model="activeTopic.mapUrl" type="text" class="flex-1 p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="貼上地圖分享連結...">
                                         </div>
                                     </div>
-
                                     <div>
                                         <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">網站 / IG</label>
                                         <div class="flex gap-2">
                                             <input v-model="activeTopic.url" type="text" class="flex-1 p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none" placeholder="https://...">
                                         </div>
                                     </div>
-
                                     <div>
                                         <label class="block text-sm font-bold text-[#8c4b22] mb-1 pl-1">重要筆記</label>
                                         <textarea v-model="activeTopic.info" rows="3" class="w-full p-3 bg-white rounded-xl border-2 border-[#f8d9bd] text-sm outline-none resize-none" placeholder="必吃推薦、注意事項..."></textarea>
                                     </div>
-                                    
                                     <div class="text-right">
                                         <button @click="deleteTopic" class="text-[#f6c0b4] text-xs hover:text-[#e11d48]">刪除此主題</button>
                                     </div>
@@ -409,94 +400,186 @@
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- 底部按鈕區 -->
+                    <!-- Modal 底部 -->
                     <div class="p-4 border-t border-[#f8d9bd] bg-[#fffbf2]">
-                        <!-- 如果正在編輯，顯示完成按鈕 -->
-                        <button 
-                            v-if="isEditing"
-                            @click="isEditing = false" 
-                            class="w-full py-3 rounded-2xl font-bold text-[#5d4037] shadow-cute border-2 border-white transform active:scale-95 transition bg-[#f8d9bd] hover:bg-[#ffdab9]"
-                        >
-                            完成編輯 ✨
-                        </button>
-                        <!-- 如果是瀏覽模式，顯示關閉按鈕 -->
-                        <button 
-                            v-else
-                            @click="closeModal" 
-                            class="w-full py-3 rounded-2xl font-bold text-[#5d4037] shadow-cute border-2 border-white transform active:scale-95 transition bg-[#d5e6e0] hover:bg-[#c1e0d3]"
-                        >
-                            關閉
-                        </button>
+                        <button v-if="isEditing" @click="isEditing = false" class="w-full py-3 rounded-2xl font-bold text-[#5d4037] shadow-cute border-2 border-white transform active:scale-95 transition bg-[#f8d9bd] hover:bg-[#ffdab9]">完成編輯 ✨</button>
+                        <button v-else @click="closeModal" class="w-full py-3 rounded-2xl font-bold text-[#5d4037] shadow-cute border-2 border-white transform active:scale-95 transition bg-[#d5e6e0] hover:bg-[#c1e0d3]">關閉</button>
                     </div>
-
                 </div>
             </div>
         </transition>
-
     </div>
 
     <script>
         const { createApp, ref, computed, watch, onMounted } = Vue;
 
-        // 手繪圖標組件
         const DoodleIcon = {
             props: ['type'],
             template: `
-                <svg v-if="type === 'attraction'" viewBox="0 0 24 24" class="doodle-icon">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                    <circle cx="12" cy="13" r="4"></circle>
-                </svg>
-                <svg v-else-if="type === 'food'" viewBox="0 0 24 24" class="doodle-icon">
-                    <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path>
-                    <path d="M7 2v20"></path>
-                    <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path>
-                </svg>
-                <svg v-else-if="type === 'shopping'" viewBox="0 0 24 24" class="doodle-icon">
-                    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
-                    <line x1="3" y1="6" x2="21" y2="6"></line>
-                    <path d="M16 10a4 4 0 0 1-8 0"></path>
-                </svg>
-                <svg v-else viewBox="0 0 24 24" class="doodle-icon">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                    <circle cx="12" cy="10" r="3"></circle>
-                </svg>
+                <svg v-if="type === 'attraction'" viewBox="0 0 24 24" class="doodle-icon"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                <svg v-else-if="type === 'food'" viewBox="0 0 24 24" class="doodle-icon"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path><path d="M7 2v20"></path><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path></svg>
+                <svg v-else-if="type === 'shopping'" viewBox="0 0 24 24" class="doodle-icon"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                <svg v-else viewBox="0 0 24 24" class="doodle-icon"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
             `
         };
 
         createApp({
-            components: {
-                DoodleIcon
-            },
+            components: { DoodleIcon },
             setup() {
-                // ==========================================
-                // 1. 上半部地圖標記邏輯
-                // ==========================================
-                const topMapContainer = ref(null);
-                const isAddingMode = ref(false);
-                const showTypeSelector = ref(false);
-                const tempMarkerPos = ref({ x: 0, y: 0 });
+                // 共用：模態框
                 const markers = ref([]);
-                const trashZone = ref(null);
-                
-                const dragData = ref({ isDragging: false, markerId: null, startX: 0, startY: 0, isInTrashZone: false });
-                let longPressTimer = null;
-                
                 const activeMarker = ref(null);
                 const activeTopic = ref(null);
-                const isEditing = ref(false); // 控制編輯/瀏覽模式
+                const isEditing = ref(false);
+                const isAddingMode = ref(false);
+                const showTypeSelector = ref(false);
+                const tempMarkerPos = ref({ x: 0, y: 0 }); // 這是地圖原始座標 (%)
+                const typeSelectorPos = ref({ x: 0, y: 0 }); // 這是螢幕絕對座標 (px)
 
                 onMounted(() => {
                     const saved = localStorage.getItem('seoul-map-markers-v3'); 
-                    if (saved) {
-                        try { markers.value = JSON.parse(saved); } catch (e) { console.error(e); }
-                    }
+                    if (saved) try { markers.value = JSON.parse(saved); } catch (e) { console.error(e); }
                 });
 
-                watch(markers, (newVal) => {
-                    localStorage.setItem('seoul-map-markers-v3', JSON.stringify(newVal));
-                }, { deep: true });
+                watch(markers, (newVal) => localStorage.setItem('seoul-map-markers-v3', JSON.stringify(newVal)), { deep: true });
 
+                // ==========================
+                // 1. 上半部地圖邏輯 (可縮放)
+                // ==========================
+                const topMapContainer = ref(null);
+                const topScale = ref(1);
+                const topTranslateX = ref(0);
+                const topTranslateY = ref(0);
+                
+                // 拖曳相關
+                const topIsDragging = ref(false);
+                const topStartX = ref(0);
+                const topStartY = ref(0);
+                const topInitialX = ref(0);
+                const topInitialY = ref(0);
+                
+                // 雙指縮放相關
+                const topInitialDistance = ref(0);
+                const topInitialScale = ref(1);
+
+                // 樣式
+                const topMapStyle = computed(() => ({
+                    transform: `translate(${topTranslateX.value}px, ${topTranslateY.value}px) scale(${topScale.value})`,
+                    transition: topIsDragging.value ? 'none' : 'transform 0.1s ease-out'
+                }));
+
+                const resetTopMapZoom = () => {
+                    topScale.value = 1;
+                    topTranslateX.value = 0;
+                    topTranslateY.value = 0;
+                };
+
+                const startTopMapDrag = (e) => {
+                    if (isAddingMode.value) return; // 新增模式下不拖曳地圖 (雖然Google Maps可以，但為了避免誤觸先鎖定)
+                    topIsDragging.value = true;
+                    topStartX.value = e.clientX;
+                    topStartY.value = e.clientY;
+                    topInitialX.value = topTranslateX.value;
+                    topInitialY.value = topTranslateY.value;
+                };
+
+                const startTopMapTouch = (e) => {
+                    if (e.touches.length === 1) {
+                        if (isAddingMode.value) return;
+                        topIsDragging.value = true;
+                        topStartX.value = e.touches[0].clientX;
+                        topStartY.value = e.touches[0].clientY;
+                        topInitialX.value = topTranslateX.value;
+                        topInitialY.value = topTranslateY.value;
+                    } else if (e.touches.length === 2) {
+                        topIsDragging.value = false;
+                        topInitialDistance.value = getDistance(e.touches);
+                        topInitialScale.value = topScale.value;
+                    }
+                };
+                
+                // 共用的移動處理 (結合滑鼠與觸控)
+                const handleMapDragMove = (e) => {
+                    // 1. 處理 Marker 拖曳 (優先)
+                    if (dragData.value.isDragging) {
+                        e.preventDefault();
+                        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                        
+                        const rect = topMapContainer.value.getBoundingClientRect();
+                        
+                        // 反推回 transform 之前的座標
+                        // X_in_layer = (clientX - rect.left - translateX) / scale
+                        const x_in_layer = (clientX - rect.left - topTranslateX.value) / topScale.value;
+                        const y_in_layer = (clientY - rect.top - topTranslateY.value) / topScale.value;
+
+                        // 轉換成百分比 (容器原始寬高)
+                        // 注意：這裡假設變形層的原始寬高 = rect.width/height (未縮放時)
+                        // 若縮放過，rect 還是容器的 rect，所以邏輯是正確的
+                        let newX = (x_in_layer / rect.width) * 100;
+                        let newY = (y_in_layer / rect.height) * 100;
+                        
+                        newX = Math.max(0, Math.min(100, newX));
+                        newY = Math.max(0, Math.min(100, newY));
+
+                        const targetMarker = markers.value.find(m => m.id === dragData.value.markerId);
+                        if (targetMarker) { 
+                            targetMarker.x = newX; 
+                            targetMarker.y = newY; 
+                        }
+
+                        // 垃圾桶偵測 (簡單版：螢幕座標)
+                        const trashRect = topMapContainer.value.parentElement.querySelector('.absolute.bottom-0')?.getBoundingClientRect();
+                        if (trashRect) { 
+                            dragData.value.isInTrashZone = clientY > trashRect.top; 
+                        }
+                        return;
+                    }
+
+                    // 2. 處理地圖拖曳/縮放
+                    if (topIsDragging.value) {
+                        e.preventDefault();
+                        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                        
+                        const dx = clientX - topStartX.value;
+                        const dy = clientY - topStartY.value;
+                        topTranslateX.value = topInitialX.value + dx;
+                        topTranslateY.value = topInitialY.value + dy;
+                    } 
+                    else if (e.touches && e.touches.length === 2) {
+                        const distance = getDistance(e.touches);
+                        if (topInitialDistance.value === 0) return;
+                        const ratio = distance / topInitialDistance.value;
+                        let newScale = topInitialScale.value * ratio;
+                        newScale = Math.min(Math.max(0.5, newScale), 5);
+                        topScale.value = newScale;
+                    }
+                };
+
+                const handleMapDragEnd = () => {
+                    topIsDragging.value = false;
+                    
+                    // 處理 Marker 拖曳結束
+                    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+                    if (dragData.value.isDragging) {
+                        if (dragData.value.isInTrashZone) {
+                            markers.value = markers.value.filter(m => m.id !== dragData.value.markerId);
+                        }
+                        dragData.value.isDragging = false;
+                        dragData.value.markerId = null;
+                        dragData.value.isInTrashZone = false;
+                    }
+                };
+
+                const onTopMapWheel = (e) => {
+                    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                    let newScale = topScale.value * delta;
+                    newScale = Math.min(Math.max(0.5, newScale), 5);
+                    topScale.value = newScale;
+                };
+
+                // 新增標記邏輯 (需反推座標)
                 const toggleAddMode = () => {
                     isAddingMode.value = !isAddingMode.value;
                     showTypeSelector.value = false;
@@ -506,17 +589,33 @@
                     if (dragData.value.isDragging) return;
                     if (!isAddingMode.value) return;
                     
+                    // 記錄點擊位置 (螢幕座標，用於顯示彈出選單)
+                    const clientX = e.clientX;
+                    const clientY = e.clientY;
+                    typeSelectorPos.value = { x: clientX, y: clientY };
+
+                    // 計算地圖座標 (百分比，用於儲存)
                     const rect = topMapContainer.value.getBoundingClientRect();
-                    const x = ((e.clientX - rect.left) / rect.width) * 100;
-                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    const x_in_layer = (clientX - rect.left - topTranslateX.value) / topScale.value;
+                    const y_in_layer = (clientY - rect.top - topTranslateY.value) / topScale.value;
+
+                    tempMarkerPos.value = { 
+                        x: (x_in_layer / rect.width) * 100, 
+                        y: (y_in_layer / rect.height) * 100 
+                    };
                     
-                    tempMarkerPos.value = { x, y };
                     showTypeSelector.value = true;
                 };
 
-                // --- 標記互動邏輯 ---
+                // Marker 互動與拖曳邏輯
+                const dragData = ref({ isDragging: false, markerId: null, startX: 0, startY: 0, isInTrashZone: false });
+                let longPressTimer = null;
+
                 const handleMarkerDown = (e, marker) => {
                     if (isAddingMode.value) return; 
+
+                    // 確保點擊或拖曳標記時，不會觸發地圖拖曳
+                    topIsDragging.value = false;
 
                     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -532,139 +631,12 @@
                     }, 200);
                 };
 
-                const handleMapDragMove = (e) => {
-                    if (!dragData.value.isDragging && longPressTimer) {
-                        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-                        const moveDist = Math.hypot(clientX - dragData.value.startX, clientY - dragData.value.startY);
-                        
-                        if (moveDist > 10) { 
-                            clearTimeout(longPressTimer); 
-                            longPressTimer = null; 
-                        }
-                        return;
-                    }
+                // 如果短按 (非拖曳)，則判定為點擊
+                // 在 handleMapDragEnd 處理
 
-                    if (dragData.value.isDragging) {
-                        e.preventDefault();
-                        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-                        
-                        const rect = topMapContainer.value.getBoundingClientRect();
-                        let newX = ((clientX - rect.left) / rect.width) * 100;
-                        let newY = ((clientY - rect.top) / rect.height) * 100;
-                        
-                        newX = Math.max(0, Math.min(100, newX));
-                        newY = Math.max(0, Math.min(100, newY));
-
-                        const targetMarker = markers.value.find(m => m.id === dragData.value.markerId);
-                        if (targetMarker) { targetMarker.x = newX; targetMarker.y = newY; }
-
-                        const trashRect = topMapContainer.value.querySelector('.absolute.bottom-0')?.getBoundingClientRect();
-                        if (trashRect) { dragData.value.isInTrashZone = clientY > trashRect.top; }
-                    }
-                };
-
-                const handleMapDragEnd = (e) => {
-                    if (longPressTimer) {
-                        clearTimeout(longPressTimer);
-                        longPressTimer = null;
-                        
-                        if (!isAddingMode.value && dragData.value.markerId) {
-                            const marker = markers.value.find(m => m.id === dragData.value.markerId);
-                            if (marker) openMarkerModal(marker);
-                        }
-                    }
-
-                    if (dragData.value.isDragging) {
-                        if (dragData.value.isInTrashZone) {
-                            markers.value = markers.value.filter(m => m.id !== dragData.value.markerId);
-                        }
-                        dragData.value.isDragging = false;
-                        dragData.value.markerId = null;
-                        dragData.value.isInTrashZone = false;
-                    }
-                };
-                
-                const openMarkerModal = (marker) => {
-                    activeMarker.value = marker;
-                    activeTopic.value = null;
-                };
-
-                const confirmAddMarker = (type) => {
-                    const newMarker = {
-                        id: Date.now(),
-                        x: tempMarkerPos.value.x,
-                        y: tempMarkerPos.value.y,
-                        type: type,
-                        topics: [{ id: Date.now() + 1, title: '新地點', image: null, url: '', mapUrl: '', hours: '', reserveUrl: '', info: '' }]
-                    };
-
-                    markers.value.push(newMarker);
-                    showTypeSelector.value = false;
-                    isAddingMode.value = false;
-                    setTimeout(() => openMarkerModal(newMarker), 100);
-                };
-
-                const getIconStyle = (type) => {
-                    switch (type) {
-                        case 'attraction': return { bg: 'bg-[#d5e6e0]', text: 'text-[#2c5f4c]' };
-                        case 'food': return { bg: 'bg-[#f8d9bd]', text: 'text-[#8c4b22]' };
-                        case 'shopping': return { bg: 'bg-[#f6c0b4]', text: 'text-[#8a3c3c]' };
-                        default: return { bg: 'bg-[#f0f0f0]', text: 'text-[#666]' };
-                    }
-                };
-
-                // ==========================================
-                // 2. 模態框邏輯
-                // ==========================================
-                const selectTopic = (topic) => {
-                    activeTopic.value = topic;
-                    isEditing.value = false; // 預設為瀏覽模式
-                };
-                
-                const backToTopics = () => activeTopic.value = null;
-                const closeModal = () => { activeMarker.value = null; activeTopic.value = null; };
-
-                const addNewTopic = () => {
-                    const newTopic = { 
-                        id: Date.now(), 
-                        title: '新筆記', 
-                        image: null, 
-                        url: '', 
-                        mapUrl: '', 
-                        hours: '', 
-                        reserveUrl: '', 
-                        info: '' 
-                    };
-                    
-                    activeMarker.value.topics.push(newTopic);
-                    activeTopic.value = newTopic;
-                    isEditing.value = true; // 新增時自動進入編輯模式
-                };
-
-                const handleImageUpload = (event) => {
-                    const file = event.target.files[0];
-                    if (file && activeTopic.value) {
-                        const reader = new FileReader();
-                        reader.onload = (e) => { activeTopic.value.image = e.target.result; };
-                        reader.readAsDataURL(file);
-                    }
-                };
-
-                const deleteTopic = () => {
-                    if (confirm("確定刪除此主題？")) {
-                        const idx = activeMarker.value.topics.indexOf(activeTopic.value);
-                        if (idx > -1) {
-                            activeMarker.value.topics.splice(idx, 1);
-                            activeTopic.value = null;
-                        }
-                    }
-                };
-
-                // ==========================================
-                // 3. 下半部縮放地鐵圖邏輯
-                // ==========================================
+                // ==========================
+                // 下半部地圖邏輯 (原本的)
+                // ==========================
                 const scale = ref(1);
                 const translateX = ref(0);
                 const translateY = ref(0);
@@ -690,7 +662,6 @@
                     translateY.value = initialY.value + (e.clientY - startY.value);
                 };
                 const stopDrag = () => { isDragging.value = false; };
-
                 const startTouch = (e) => {
                     if (e.touches.length === 1) {
                         isDragging.value = true;
@@ -701,7 +672,6 @@
                         initialDistance.value = getDistance(e.touches); initialScale.value = scale.value;
                     }
                 };
-
                 const onTouch = (e) => {
                     if (e.touches.length === 1 && isDragging.value) {
                         translateX.value = initialX.value + (e.touches[0].clientX - startX.value);
@@ -714,7 +684,6 @@
                         scale.value = newScale;
                     }
                 };
-
                 const stopTouch = () => { isDragging.value = false; initialDistance.value = 0; };
                 const onWheel = (e) => {
                     const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -722,20 +691,74 @@
                     newScale = Math.min(Math.max(0.5, newScale), 5);
                     scale.value = newScale;
                 };
-
                 const getDistance = (touches) => {
                     return Math.sqrt(Math.pow(touches[0].clientX - touches[1].clientX, 2) + Math.pow(touches[0].clientY - touches[1].clientY, 2));
                 };
 
+                // 共用方法
+                const openMarkerModal = (marker) => { activeMarker.value = marker; activeTopic.value = null; };
+                const confirmAddMarker = (type) => {
+                    const newMarker = {
+                        id: Date.now(),
+                        x: tempMarkerPos.value.x,
+                        y: tempMarkerPos.value.y,
+                        type: type,
+                        topics: [{ id: Date.now() + 1, title: '新地點', image: null, url: '', mapUrl: '', hours: '', reserveUrl: '', info: '' }]
+                    };
+                    markers.value.push(newMarker);
+                    showTypeSelector.value = false;
+                    isAddingMode.value = false;
+                    setTimeout(() => openMarkerModal(newMarker), 100);
+                };
+                const getIconStyle = (type) => {
+                    switch (type) {
+                        case 'attraction': return { bg: 'bg-[#d5e6e0]', text: 'text-[#2c5f4c]' };
+                        case 'food': return { bg: 'bg-[#f8d9bd]', text: 'text-[#8c4b22]' };
+                        case 'shopping': return { bg: 'bg-[#f6c0b4]', text: 'text-[#8a3c3c]' };
+                        default: return { bg: 'bg-[#f0f0f0]', text: 'text-[#666]' };
+                    }
+                };
+                const selectTopic = (topic) => { activeTopic.value = topic; isEditing.value = false; };
+                const backToTopics = () => activeTopic.value = null;
+                const closeModal = () => { activeMarker.value = null; activeTopic.value = null; };
+                const addNewTopic = () => {
+                    const newTopic = { id: Date.now(), title: '新筆記', image: null, url: '', mapUrl: '', hours: '', reserveUrl: '', info: '' };
+                    activeMarker.value.topics.push(newTopic);
+                    activeTopic.value = newTopic;
+                    isEditing.value = true;
+                };
+                const handleImageUpload = (event) => {
+                    const file = event.target.files[0];
+                    if (file && activeTopic.value) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => { activeTopic.value.image = e.target.result; };
+                        reader.readAsDataURL(file);
+                    }
+                };
+                const deleteTopic = () => {
+                    if (confirm("確定刪除此主題？")) {
+                        const idx = activeMarker.value.topics.indexOf(activeTopic.value);
+                        if (idx > -1) {
+                            activeMarker.value.topics.splice(idx, 1);
+                            activeTopic.value = null;
+                        }
+                    }
+                };
+
                 return {
-                    topMapContainer, isAddingMode, toggleAddMode, handleMapClick,
-                    markers, showTypeSelector, tempMarkerPos, confirmAddMarker, getIconStyle,
-                    dragData, handleMarkerDown, handleMapDragMove, handleMapDragEnd, trashZone,
-                    activeMarker, activeTopic, openMarkerModal, selectTopic, backToTopics, closeModal,
-                    addNewTopic, handleImageUpload, deleteTopic,
-                    imageStyle, resetImageZoom,
-                    startDrag, onDrag, stopDrag, startTouch, onTouch, stopTouch, onWheel,
-                    isEditing
+                    // State
+                    markers, isAddingMode, showTypeSelector, tempMarkerPos, typeSelectorPos,
+                    dragData, trashZone, activeMarker, activeTopic, isEditing,
+                    // Top Map
+                    topMapContainer, topMapStyle,
+                    resetTopMapZoom, startTopMapDrag, startTopMapTouch, onTopMapWheel,
+                    handleMapDragMove, handleMapDragEnd, handleMapClick,
+                    toggleAddMode, handleMarkerDown, confirmAddMarker,
+                    // Bottom Map
+                    imageContainer: ref(null), // 佔位
+                    imageStyle, resetImageZoom, startDrag, onDrag, stopDrag, startTouch, onTouch, stopTouch, onWheel,
+                    // Methods
+                    getIconStyle, openMarkerModal, selectTopic, backToTopics, closeModal, addNewTopic, handleImageUpload, deleteTopic
                 };
             }
         }).mount('#app');
