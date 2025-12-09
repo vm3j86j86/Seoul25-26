@@ -78,14 +78,23 @@
 </head>
 <body>
 
-    <div id="app" class="h-screen w-screen flex flex-col relative bg-[#ffefd7]">
+    <!-- 
+        修改說明：
+        1. h-screen 改為 h-[100dvh]：更能適應手機瀏覽器網址列伸縮，防止背景跑版。
+    -->
+    <div id="app" class="h-[100dvh] w-screen flex flex-col relative bg-[#ffefd7]">
 
         <!-- ========================================== -->
-        <!-- 上半部：互動標記地圖 -->
+        <!-- 上半部：互動標記地圖 (50% 高度) -->
         <!-- ========================================== -->
+        <!-- 
+            修改說明：
+            1. h-[55%] 改為 h-1/2 (50%)
+            2. 增加 flex-1 確保彈性佈局穩定
+        -->
         <div 
             ref="topMapContainer"
-            class="h-[55%] w-full relative overflow-hidden bg-white border-b-4 border-white select-none"
+            class="h-1/2 flex-1 w-full relative overflow-hidden bg-white border-b-4 border-white select-none"
             :class="{ 'cursor-crosshair': isAddingMode }"
             @click="handleMapClick"
             @mousemove="handleMapDragMove"
@@ -180,9 +189,14 @@
         </div>
 
         <!-- ========================================== -->
-        <!-- 下半部：可縮放地鐵圖 -->
+        <!-- 下半部：可縮放地鐵圖 (50% 高度) -->
         <!-- ========================================== -->
-        <div class="h-[45%] w-full relative bg-[#ffefd7] overflow-hidden touch-none border-t border-[#f8d9bd]">
+        <!-- 
+            修改說明：
+            1. h-[45%] 改為 h-1/2 (50%)
+            2. 增加 flex-1
+        -->
+        <div class="h-1/2 flex-1 w-full relative bg-[#ffefd7] overflow-hidden touch-none border-t border-[#f8d9bd]">
             <div 
                 ref="imageContainer"
                 class="w-full h-full flex items-center justify-center cursor-move"
@@ -432,7 +446,7 @@
                     showTypeSelector.value = true;
                 };
 
-                // --- 標記互動邏輯 (修復版) ---
+                // --- 標記互動邏輯 ---
                 const handleMarkerDown = (e, marker) => {
                     if (isAddingMode.value) return; // 新增模式下不觸發拖曳/點擊
 
@@ -540,13 +554,13 @@
                 };
 
                 // ==========================================
-                // 2. 模態框邏輯 (修復版)
+                // 2. 模態框邏輯
                 // ==========================================
                 const selectTopic = (topic) => activeTopic.value = topic;
                 const backToTopics = () => activeTopic.value = null;
                 const closeModal = () => { activeMarker.value = null; activeTopic.value = null; };
 
-                // 修正：不再使用 prompt，直接新增並跳轉編輯
+                // 直接新增並跳轉編輯
                 const addNewTopic = () => {
                     const newTopic = { 
                         id: Date.now(), 
