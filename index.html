@@ -38,19 +38,19 @@
 
     <div id="app" class="h-screen w-screen flex flex-col relative bg-slate-100">
 
-        <!-- 上半部：固定地圖 (55% 高度) -->
-        <!-- 依照需求：map.png，固定不能移動 -->
-        <div class="h-[55%] w-full relative overflow-hidden bg-slate-200 border-b border-slate-300">
+        <!-- 上半部：固定地圖 (50% 高度) -->
+        <!-- 修改：高度改為 h-1/2 (50%)，背景改為白色，圖片改為 object-cover 以消除留白 -->
+        <div class="h-1/2 w-full relative overflow-hidden bg-white border-b border-slate-300">
             <img 
                 src="map.png" 
                 alt="Seoul District Map" 
-                class="w-full h-full object-contain pointer-events-none select-none"
+                class="w-full h-full object-cover pointer-events-none select-none"
             >
         </div>
 
-        <!-- 下半部：可縮放地鐵圖 (45% 高度) -->
-        <!-- 依照需求：image.png，可縮放 -->
-        <div class="h-[45%] w-full relative bg-slate-50 overflow-hidden touch-none">
+        <!-- 下半部：可縮放地鐵圖 (50% 高度) -->
+        <!-- 修改：高度改為 h-1/2 (50%) -->
+        <div class="h-1/2 w-full relative bg-slate-50 overflow-hidden touch-none">
             
             <!-- 圖片容器 (支援 Pan/Zoom) -->
             <div 
@@ -76,7 +76,7 @@
                 </div>
             </div>
 
-            <!-- 簡單的重置按鈕 (選用，為了方便操作保留一個極小的按鈕) -->
+            <!-- 簡單的重置按鈕 -->
             <button @click="resetImageZoom" class="absolute bottom-4 right-4 bg-white/80 p-2 rounded-full shadow text-slate-500 hover:text-slate-800 transition z-10 backdrop-blur-sm">
                 <i class="fa-solid fa-compress"></i>
             </button>
@@ -209,4 +209,5 @@
     </script>
 </body>
 </html>
+
 
