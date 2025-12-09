@@ -432,28 +432,37 @@
                     showTypeSelector.value = true;
                 };
 
-                // --- 標記拖曳邏輯 ---
+                // --- 標記互動邏輯 (修復版) ---
                 const handleMarkerDown = (e, marker) => {
+                    if (isAddingMode.value) return; // 新增模式下不觸發拖曳/點擊
+
                     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
                     if (longPressTimer) clearTimeout(longPressTimer);
                     dragData.value.startX = clientX;
                     dragData.value.startY = clientY;
+                    dragData.value.markerId = marker.id; // 立即設定當前 ID
 
+                    // 設定長按計時器：0.2秒後觸發拖曳
                     longPressTimer = setTimeout(() => {
                         dragData.value.isDragging = true;
-                        dragData.value.markerId = marker.id;
-                        isAddingMode.value = false;
+                        longPressTimer = null;
                     }, 200);
                 };
 
                 const handleMapDragMove = (e) => {
+                    // 如果尚未判定為拖曳，檢查是否手指移動過大 (防手抖)
                     if (!dragData.value.isDragging && longPressTimer) {
                         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                         const moveDist = Math.hypot(clientX - dragData.value.startX, clientY - dragData.value.startY);
-                        if (moveDist > 10) { clearTimeout(longPressTimer); longPressTimer = null; }
+                        
+                        // 如果移動超過 10px，取消長按判定 (視為普通滑動)
+                        if (moveDist > 10) { 
+                            clearTimeout(longPressTimer); 
+                            longPressTimer = null; 
+                        }
                         return;
                     }
 
@@ -478,8 +487,19 @@
                 };
 
                 const handleMapDragEnd = (e) => {
-                    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+                    // 1. 判斷是否為短按 (點擊)
+                    if (longPressTimer) {
+                        // 計時器還在跑，代表時間很短 -> 觸發點擊事件
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                        
+                        if (!isAddingMode.value && dragData.value.markerId) {
+                            const marker = markers.value.find(m => m.id === dragData.value.markerId);
+                            if (marker) openMarkerModal(marker);
+                        }
+                    }
 
+                    // 2. 處理拖曳結束
                     if (dragData.value.isDragging) {
                         if (dragData.value.isInTrashZone) {
                             markers.value = markers.value.filter(m => m.id !== dragData.value.markerId);
@@ -491,14 +511,11 @@
                 };
                 
                 const openMarkerModal = (marker) => {
-                    if (isAddingMode.value) return;
-                    if (dragData.value.isDragging) return;
                     activeMarker.value = marker;
                     activeTopic.value = null;
                 };
 
                 const confirmAddMarker = (type) => {
-                    // 這裡不再需要 iconClass，直接用 type 決定渲染哪個 SVG
                     const newMarker = {
                         id: Date.now(),
                         x: tempMarkerPos.value.x,
@@ -523,17 +540,28 @@
                 };
 
                 // ==========================================
-                // 2. 模態框邏輯
+                // 2. 模態框邏輯 (修復版)
                 // ==========================================
                 const selectTopic = (topic) => activeTopic.value = topic;
                 const backToTopics = () => activeTopic.value = null;
                 const closeModal = () => { activeMarker.value = null; activeTopic.value = null; };
 
+                // 修正：不再使用 prompt，直接新增並跳轉編輯
                 const addNewTopic = () => {
-                    const title = prompt("請輸入新主題名稱", "新主題");
-                    if (title) {
-                        activeMarker.value.topics.push({ id: Date.now(), title: title, image: null, url: '', mapUrl: '', hours: '', reserveUrl: '', info: '' });
-                    }
+                    const newTopic = { 
+                        id: Date.now(), 
+                        title: '新筆記', // 預設標題
+                        image: null, 
+                        url: '', 
+                        mapUrl: '', 
+                        hours: '', 
+                        reserveUrl: '', 
+                        info: '' 
+                    };
+                    
+                    activeMarker.value.topics.push(newTopic);
+                    // 直接進入該主題的編輯模式
+                    activeTopic.value = newTopic;
                 };
 
                 const handleImageUpload = (event) => {
