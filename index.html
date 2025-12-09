@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>首爾地圖助手</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <!-- Google Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f8fafc;
+            overflow: hidden; /* 防止整個頁面滾動 */
+            -webkit-tap-highlight-color: transparent;
+            touch-action: none; /* 禁止瀏覽器預設的縮放/滾動行為，交由 JS 控制 */
+        }
+
+        /* 隱藏 Scrollbar */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="h-screen w-screen flex flex-col relative bg-slate-100">
+
+        <!-- 上半部：固定地圖 (55% 高度) -->
+        <!-- 依照需求：map.png，固定不能移動 -->
+        <div class="h-[55%] w-full relative overflow-hidden bg-slate-200 border-b border-slate-300">
+            <img 
+                src="map.png" 
+                alt="Seoul District Map" 
+                class="w-full h-full object-contain pointer-events-none select-none"
+            >
+        </div>
+
+        <!-- 下半部：可縮放地鐵圖 (45% 高度) -->
+        <!-- 依照需求：image.png，可縮放 -->
+        <div class="h-[45%] w-full relative bg-slate-50 overflow-hidden touch-none">
+            
+            <!-- 圖片容器 (支援 Pan/Zoom) -->
+            <div 
+                ref="imageContainer"
+                class="w-full h-full flex items-center justify-center cursor-move"
+                @mousedown="startDrag"
+                @mousemove="onDrag"
+                @mouseup="stopDrag"
+                @mouseleave="stopDrag"
+                @touchstart.prevent="startTouch"
+                @touchmove.prevent="onTouch"
+                @touchend.prevent="stopTouch"
+                @wheel.prevent="onWheel"
+            >
+                <div :style="imageStyle" class="origin-center will-change-transform">
+                    <img 
+                        src="image.png" 
+                        alt="Seoul Subway Map" 
+                        class="max-w-none shadow-xl pointer-events-none select-none"
+                        style="width: 1000px; display: block;" 
+                        @dragstart.prevent
+                    >
+                </div>
+            </div>
+
+            <!-- 簡單的重置按鈕 (選用，為了方便操作保留一個極小的按鈕) -->
+            <button @click="resetImageZoom" class="absolute bottom-4 right-4 bg-white/80 p-2 rounded-full shadow text-slate-500 hover:text-slate-800 transition z-10 backdrop-blur-sm">
+                <i class="fa-solid fa-compress"></i>
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed } = Vue;
+
+        createApp({
+            setup() {
+                // --- 圖片縮放邏輯 (Subway Map) ---
+                const scale = ref(1);
+                const translateX = ref(0);
+                const translateY = ref(0);
+                
+                // 拖曳狀態
+                const isDragging = ref(false);
+                const startX = ref(0);
+                const startY = ref(0);
+                const initialX = ref(0);
+                const initialY = ref(0);
+                
+                // 雙指縮放狀態
+                const initialDistance = ref(0);
+                const initialScale = ref(1);
+
+                // 計算樣式
+                const imageStyle = computed(() => ({
+                    transform: `translate(${translateX.value}px, ${translateY.value}px) scale(${scale.value})`,
+                    transition: isDragging.value ? 'none' : 'transform 0.1s ease-out' // 拖曳時無過渡，釋放時有緩動
+                }));
+
+                const resetImageZoom = () => {
+                    scale.value = 1;
+                    translateX.value = 0;
+                    translateY.value = 0;
+                };
+
+                // --- 滑鼠操作 (電腦版支援) ---
+                const startDrag = (e) => {
+                    isDragging.value = true;
+                    startX.value = e.clientX;
+                    startY.value = e.clientY;
+                    initialX.value = translateX.value;
+                    initialY.value = translateY.value;
+                };
+
+                const onDrag = (e) => {
+                    if (!isDragging.value) return;
+                    e.preventDefault();
+                    const dx = e.clientX - startX.value;
+                    const dy = e.clientY - startY.value;
+                    translateX.value = initialX.value + dx;
+                    translateY.value = initialY.value + dy;
+                };
+
+                const stopDrag = () => {
+                    isDragging.value = false;
+                };
+
+                // --- 觸控操作 (手機版核心：單指拖曳 + 雙指縮放) ---
+                const startTouch = (e) => {
+                    if (e.touches.length === 1) {
+                        // 單指：開始拖曳
+                        isDragging.value = true;
+                        startX.value = e.touches[0].clientX;
+                        startY.value = e.touches[0].clientY;
+                        initialX.value = translateX.value;
+                        initialY.value = translateY.value;
+                    } else if (e.touches.length === 2) {
+                        // 雙指：開始縮放
+                        isDragging.value = false; // 雙指時不處理位移拖曳，專注縮放
+                        initialDistance.value = getDistance(e.touches);
+                        initialScale.value = scale.value;
+                    }
+                };
+
+                const onTouch = (e) => {
+                    if (e.touches.length === 1 && isDragging.value) {
+                        // 單指拖曳
+                        const dx = e.touches[0].clientX - startX.value;
+                        const dy = e.touches[0].clientY - startY.value;
+                        translateX.value = initialX.value + dx;
+                        translateY.value = initialY.value + dy;
+                    } else if (e.touches.length === 2) {
+                        // 雙指縮放
+                        const distance = getDistance(e.touches);
+                        if (initialDistance.value === 0) return; // 避免除以零
+                        
+                        const ratio = distance / initialDistance.value;
+                        let newScale = initialScale.value * ratio;
+                        
+                        // 限制縮放範圍 (0.5x ~ 5x)
+                        newScale = Math.min(Math.max(0.5, newScale), 5); 
+                        scale.value = newScale;
+                    }
+                };
+
+                const stopTouch = () => {
+                    isDragging.value = false;
+                    initialDistance.value = 0; // 重置雙指距離
+                };
+
+                const onWheel = (e) => {
+                    // 滑鼠滾輪縮放
+                    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                    let newScale = scale.value * delta;
+                    newScale = Math.min(Math.max(0.5, newScale), 5);
+                    scale.value = newScale;
+                };
+
+                // 計算兩點距離
+                const getDistance = (touches) => {
+                    const dx = touches[0].clientX - touches[1].clientX;
+                    const dy = touches[0].clientY - touches[1].clientY;
+                    return Math.sqrt(dx * dx + dy * dy);
+                };
+
+                return {
+                    imageStyle,
+                    startDrag, onDrag, stopDrag, 
+                    startTouch, onTouch, stopTouch,
+                    onWheel,
+                    resetImageZoom
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+
