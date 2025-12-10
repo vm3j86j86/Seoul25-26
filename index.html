@@ -651,7 +651,8 @@
                         topTranslateY.value = 0;
                     }
 
-                    if (dragData.value.isDragging) {
+                    // 修改：只要有 markerId 就呼叫結束處理（包含點擊或拖曳）
+                    if (dragData.value.markerId) {
                         handleMapDragEnd(e);
                     }
                 };
@@ -679,7 +680,9 @@
                 const handleTopMouseUp = (e) => {
                     topMapState.value.isDragging = false;
                     if (topScale.value <= 1) { topTranslateX.value = 0; topTranslateY.value = 0; }
-                    if (dragData.value.isDragging) handleMapDragEnd(e);
+                    
+                    // 修改：只要有 markerId 就呼叫結束處理
+                    if (dragData.value.markerId) handleMapDragEnd(e);
                 };
 
 
@@ -744,10 +747,11 @@
                     dragData.value.startY = clientY;
                     dragData.value.markerId = marker.id; 
 
+                    // 修改：時間縮短為 200ms
                     longPressTimer = setTimeout(() => {
                         dragData.value.isDragging = true;
                         longPressTimer = null;
-                    }, 300);
+                    }, 200);
                 };
 
                 const handleMapDragMove = (e) => {
@@ -781,6 +785,7 @@
                 };
 
                 const handleMapDragEnd = (e) => {
+                    // 1. 處理點擊 (如果計時器還在，代表按住時間很短)
                     if (longPressTimer) {
                         clearTimeout(longPressTimer);
                         longPressTimer = null;
@@ -791,14 +796,17 @@
                         }
                     }
 
+                    // 2. 處理拖曳結束
                     if (dragData.value.isDragging) {
                         if (dragData.value.isInTrashZone) {
                             markers.value = markers.value.filter(m => m.id !== dragData.value.markerId);
                         }
                         dragData.value.isDragging = false;
-                        dragData.value.markerId = null;
                         dragData.value.isInTrashZone = false;
                     }
+                    
+                    // 3. 修改：最後務必清除 markerId，避免狀態殘留
+                    dragData.value.markerId = null;
                 };
                 
                 const openMarkerModal = (marker) => {
@@ -963,5 +971,4 @@
     </script>
 </body>
 </html>
-
 
