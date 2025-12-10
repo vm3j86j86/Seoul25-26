@@ -48,7 +48,6 @@
         }
         .marker-enter-active { animation: bounce-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         
-        /* 修正：只對透明度和變形做過渡，避免影響 left/top 位置造成干擾 */
         .marker-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
         .marker-leave-to { transform: scale(0); opacity: 0; }
 
@@ -61,15 +60,16 @@
         /* 陰影與互動 */
         .shadow-cute { box-shadow: 2px 2px 0px rgba(160, 120, 100, 0.2); }
         
-        /* 拖曳時的樣式修正 - 解決殘影問題 */
+        /* 拖曳時的樣式修正 */
         .dragging-marker {
             opacity: 0.9;
             z-index: 100 !important;
-            pointer-events: none; /* 讓事件穿透到地圖容器以處理移動 */
+            pointer-events: none;
             filter: drop-shadow(0 10px 10px rgba(0,0,0,0.2));
-            transform: translate(-50%, -120%) scale(1.2) !important; /* 保持錨點並放大 */
+            /* 拖曳時稍微上浮 (-140%) 讓手指不會擋住針尖，並放大 */
+            transform: translate(-50%, -140%) scale(1.2) !important; 
             
-            /* 關鍵修正：強制關閉過渡效果，防止拖曳時的延遲殘影 */
+            /* 強制關閉過渡效果，防止殘影 */
             transition: none !important; 
             will-change: left, top; 
         }
@@ -117,14 +117,11 @@
             @mouseup="handleTopMouseUp"
             @mouseleave="handleTopMouseUp"
         >
-            <!-- 
-                1. 地圖內容層 (Wrapper) 
-            -->
+            <!-- 地圖內容層 -->
             <div 
                 class="w-full h-full relative origin-top-left will-change-transform"
                 :style="topMapTransformStyle"
             >
-                <!-- 地圖底圖 -->
                 <img 
                     src="map.png" 
                     alt="Seoul District Map" 
@@ -137,47 +134,37 @@
                     <div 
                         v-for="marker in markers" 
                         :key="marker.id"
-                        class="absolute cursor-pointer group z-20 select-none"
+                        class="absolute cursor-pointer group z-20 select-none flex flex-col items-center justify-end w-12 h-12"
                         :class="{ 'dragging-marker': dragData.isDragging && dragData.markerId === marker.id }"
                         :style="{ 
                             left: marker.x + '%', 
                             top: marker.y + '%',
-                            transform: 'translate(-50%, -120%)' 
+                            transform: 'translate(-50%, -100%)' 
                         }"
                         @mousedown.stop="handleMarkerDown($event, marker)"
                         @touchstart.stop="handleMarkerDown($event, marker)"
                     >
                         <!-- 
-                            圖標本體 (縮小尺寸)
-                            w-11 -> w-8 (32px)
-                            h-11 -> h-8
-                            translate-y: -120% 讓針尖對準座標點
+                            Hit Area: w-12 h-12 (48px) - 擴大點擊範圍
+                            Visual Icon: w-8 h-8 (32px) - 保持視覺小巧
+                            mb-1: 讓針尖稍微上提，準確對齊 Hit Area 的底線 (錨點)
                         -->
                         <div 
-                            class="w-8 h-8 rounded-full shadow-cute border-2 border-white flex items-center justify-center transition-transform relative"
+                            class="w-8 h-8 rounded-full shadow-cute border-2 border-white flex items-center justify-center transition-transform relative mb-1 bg-white"
                             :class="getIconStyle(marker.type).bg"
                         >
-                            <!-- Icon 縮小: w-4 h-4 -->
                             <doodle-icon :type="marker.type" class="w-4 h-4" :class="getIconStyle(marker.type).text"></doodle-icon>
                             
                             <!-- 底部小箭頭 (針尖) -->
                             <div class="absolute -bottom-1 w-2.5 h-2.5 bg-inherit rotate-45 border-r-2 border-b-2 border-white/20"></div>
                         </div>
-
-                        <!-- 標記名稱 (稍微調整位置) -->
-                        <div v-show="!(dragData.isDragging && dragData.markerId === marker.id)" 
-                             class="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-white/90 px-2 py-0.5 rounded-lg text-[10px] font-bold shadow-sm whitespace-nowrap text-[#5d4037] pointer-events-none border border-[#f8d9bd]">
-                            {{ marker.topics.length > 0 ? marker.topics[0].title : '新地點' }}
-                        </div>
+                        
+                        <!-- 已移除文字標籤 -->
                     </div>
                 </transition-group>
             </div>
 
-            <!-- ========================================== -->
             <!-- UI 層 (Fixed Overlays) -->
-            <!-- ========================================== -->
-
-            <!-- 左上角新增按鈕 -->
             <div class="absolute top-4 left-4 z-30">
                 <button 
                     @click.stop="toggleAddMode" 
@@ -190,7 +177,6 @@
                 </button>
             </div>
 
-            <!-- 右上角縮放還原按鈕 -->
             <div class="absolute top-4 right-4 z-30">
                 <button 
                     @click.stop="resetTopMapZoom" 
