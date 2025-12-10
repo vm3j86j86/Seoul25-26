@@ -57,13 +57,15 @@
         .trash-enter-from, .trash-leave-to { transform: translateY(100%); }
 
         /* 陰影與互動 */
-        .shadow-cute { box-shadow: 3px 3px 0px rgba(160, 120, 100, 0.2); }
+        .shadow-cute { box-shadow: 2px 2px 0px rgba(160, 120, 100, 0.2); }
         
+        /* 拖曳時稍微放大，但不改變錨點 */
         .dragging-marker {
-            transform: scale(1.3) !important;
             opacity: 0.9;
             z-index: 100 !important;
             pointer-events: none;
+            filter: drop-shadow(0 10px 10px rgba(0,0,0,0.2));
+            transform: translate(-50%, -120%) scale(1.2) !important; /* 保持錨點修正並放大 */
         }
 
         /* SVG 手繪風格設定 */
@@ -111,7 +113,6 @@
         >
             <!-- 
                 1. 地圖內容層 (Wrapper) 
-                將地圖圖片與標記包在一起，統一進行 transform 縮放與移動
             -->
             <div 
                 class="w-full h-full relative origin-top-left will-change-transform"
@@ -125,29 +126,41 @@
                     @dragstart.prevent
                 >
 
-                <!-- 地圖上的標記 (Markers) - 現在會跟著地圖一起縮放 -->
+                <!-- 地圖上的標記 (Markers) -->
                 <transition-group name="marker">
                     <div 
                         v-for="marker in markers" 
                         :key="marker.id"
-                        class="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group z-20"
+                        class="absolute cursor-pointer group z-20"
                         :class="{ 'dragging-marker': dragData.isDragging && dragData.markerId === marker.id }"
-                        :style="{ left: marker.x + '%', top: marker.y + '%' }"
+                        :style="{ 
+                            left: marker.x + '%', 
+                            top: marker.y + '%',
+                            transform: 'translate(-50%, -120%)' 
+                        }"
                         @mousedown.stop="handleMarkerDown($event, marker)"
                         @touchstart.stop="handleMarkerDown($event, marker)"
                     >
-                        <!-- 圖標本體 -->
+                        <!-- 
+                            圖標本體 (縮小尺寸)
+                            w-11 -> w-8 (32px)
+                            h-11 -> h-8
+                            translate-y: -120% 讓針尖對準座標點
+                        -->
                         <div 
-                            class="w-11 h-11 rounded-full shadow-cute border-2 border-white flex items-center justify-center transition-transform relative"
+                            class="w-8 h-8 rounded-full shadow-cute border-2 border-white flex items-center justify-center transition-transform relative"
                             :class="getIconStyle(marker.type).bg"
                         >
-                            <doodle-icon :type="marker.type" class="w-6 h-6" :class="getIconStyle(marker.type).text"></doodle-icon>
-                            <div class="absolute -bottom-1 w-3 h-3 bg-inherit rotate-45 border-r-2 border-b-2 border-white/20"></div>
+                            <!-- Icon 縮小: w-4 h-4 -->
+                            <doodle-icon :type="marker.type" class="w-4 h-4" :class="getIconStyle(marker.type).text"></doodle-icon>
+                            
+                            <!-- 底部小箭頭 (針尖) -->
+                            <div class="absolute -bottom-1 w-2.5 h-2.5 bg-inherit rotate-45 border-r-2 border-b-2 border-white/20"></div>
                         </div>
 
-                        <!-- 標記名稱 -->
+                        <!-- 標記名稱 (稍微調整位置) -->
                         <div v-show="!(dragData.isDragging && dragData.markerId === marker.id)" 
-                             class="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-white/90 px-2 py-1 rounded-xl text-xs font-bold shadow-sm whitespace-nowrap text-[#5d4037] pointer-events-none border border-[#f8d9bd]">
+                             class="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-white/90 px-2 py-0.5 rounded-lg text-[10px] font-bold shadow-sm whitespace-nowrap text-[#5d4037] pointer-events-none border border-[#f8d9bd]">
                             {{ marker.topics.length > 0 ? marker.topics[0].title : '新地點' }}
                         </div>
                     </div>
@@ -155,10 +168,10 @@
             </div>
 
             <!-- ========================================== -->
-            <!-- UI 層 (Fixed Overlays) - 不隨地圖縮放 -->
+            <!-- UI 層 (Fixed Overlays) -->
             <!-- ========================================== -->
 
-            <!-- 2. 左上角新增按鈕 -->
+            <!-- 左上角新增按鈕 -->
             <div class="absolute top-4 left-4 z-30">
                 <button 
                     @click.stop="toggleAddMode" 
@@ -171,7 +184,7 @@
                 </button>
             </div>
 
-            <!-- 3. 新增：右上角縮放還原按鈕 -->
+            <!-- 右上角縮放還原按鈕 -->
             <div class="absolute top-4 right-4 z-30">
                 <button 
                     @click.stop="resetTopMapZoom" 
@@ -183,7 +196,7 @@
                 </button>
             </div>
 
-            <!-- 4. 拖曳刪除區 -->
+            <!-- 拖曳刪除區 -->
             <transition name="trash">
                 <div 
                     v-if="dragData.isDragging" 
@@ -198,22 +211,22 @@
                 </div>
             </transition>
 
-            <!-- 5. 類型選擇彈出選單 -->
+            <!-- 類型選擇選單 -->
             <div 
                 v-if="showTypeSelector"
-                class="absolute bg-white rounded-2xl shadow-cute p-3 flex gap-3 z-40"
+                class="absolute bg-white rounded-2xl shadow-cute p-2 flex gap-2 z-40"
                 :style="typeSelectorStyle"
             >
-                <button @click.stop="confirmAddMarker('attraction')" class="w-12 h-12 rounded-xl bg-[#d5e6e0] text-[#2c5f4c] hover:bg-[#bde0d3] flex items-center justify-center">
-                    <doodle-icon type="attraction" class="w-6 h-6"></doodle-icon>
+                <button @click.stop="confirmAddMarker('attraction')" class="w-10 h-10 rounded-xl bg-[#d5e6e0] text-[#2c5f4c] hover:bg-[#bde0d3] flex items-center justify-center">
+                    <doodle-icon type="attraction" class="w-5 h-5"></doodle-icon>
                 </button>
-                <button @click.stop="confirmAddMarker('food')" class="w-12 h-12 rounded-xl bg-[#f8d9bd] text-[#8c4b22] hover:bg-[#ffd1a3] flex items-center justify-center">
-                    <doodle-icon type="food" class="w-6 h-6"></doodle-icon>
+                <button @click.stop="confirmAddMarker('food')" class="w-10 h-10 rounded-xl bg-[#f8d9bd] text-[#8c4b22] hover:bg-[#ffd1a3] flex items-center justify-center">
+                    <doodle-icon type="food" class="w-5 h-5"></doodle-icon>
                 </button>
-                <button @click.stop="confirmAddMarker('shopping')" class="w-12 h-12 rounded-xl bg-[#f6c0b4] text-[#8a3c3c] hover:bg-[#ffb3a1] flex items-center justify-center">
-                    <doodle-icon type="shopping" class="w-6 h-6"></doodle-icon>
+                <button @click.stop="confirmAddMarker('shopping')" class="w-10 h-10 rounded-xl bg-[#f6c0b4] text-[#8a3c3c] hover:bg-[#ffb3a1] flex items-center justify-center">
+                    <doodle-icon type="shopping" class="w-5 h-5"></doodle-icon>
                 </button>
-                <div class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-white rotate-45"></div>
+                <div class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-3 h-3 bg-white rotate-45"></div>
             </div>
         </div>
 
@@ -515,12 +528,14 @@
                 const topTranslateY = ref(0);
                 const topMapState = ref({
                     isDragging: false,
-                    startX: 0,
-                    startY: 0,
-                    initialX: 0,
-                    initialY: 0,
+                    startX: 0, // 雙指中心點 X
+                    startY: 0, // 雙指中心點 Y
                     initialDistance: 0,
-                    initialScale: 1
+                    initialScale: 1,
+                    initialTranslateX: 0,
+                    initialTranslateY: 0,
+                    anchorInContentX: 0, // 縮放中心點在地圖內容的 X 座標
+                    anchorInContentY: 0  // 縮放中心點在地圖內容的 Y 座標
                 });
 
                 // 計算地圖的 Transform Style
@@ -529,32 +544,20 @@
                     transition: topMapState.value.isDragging ? 'none' : 'transform 0.1s ease-out'
                 }));
 
-                // 計算類型選擇器的位置 (因為它是 Fixed Overlay，需要計算當前螢幕位置)
+                // 計算類型選擇器的位置
                 const typeSelectorStyle = computed(() => {
-                    // 這裡其實不需要特別計算，因為我們點擊時是算出了它在地圖內的 %
-                    // 但因為選擇器層級拉出來了，我們需要把 % 轉回 px，並且加上 offset
-                    // 比較簡單的做法是：直接使用 fixed/absolute 對應 click 的 clientX/Y，
-                    // 但為了簡單，我們讓它跟隨我們在 click 記錄的 tempMarkerPos
-                    
-                    // 更好的方式：點擊時紀錄螢幕座標，讓選單出現在點擊處
-                    // 這裡我們簡化：點擊時就記錄了相對於地圖的 %。
-                    // 若地圖縮放了，這個選單應該要出現在「縮放後」的位置。
-                    
                     if (!topMapContainer.value) return {};
                     const rect = topMapContainer.value.getBoundingClientRect();
-                    
-                    // 將 % 座標轉回縮放後的像素位置
                     const mapW = rect.width;
                     const mapH = rect.height;
                     
-                    // 公式：ScreenX = ContainerLeft + TranslateX + (PercentX * Width * Scale)
                     const x = (tempMarkerPos.value.x / 100) * mapW * topScale.value + topTranslateX.value;
                     const y = (tempMarkerPos.value.y / 100) * mapH * topScale.value + topTranslateY.value;
                     
                     return {
                         left: x + 'px',
                         top: y + 'px',
-                        transform: 'translate(-50%, -100%) translateY(-15px)' // 往上偏移一點
+                        transform: 'translate(-50%, -100%) translateY(-10px)'
                     };
                 });
 
@@ -564,65 +567,84 @@
                     topTranslateY.value = 0;
                 };
                 
-                // --- Top Map Touch Events (Pan & Zoom) ---
+                // --- Top Map Touch Events (2-Finger Pan & Zoom) ---
                 const handleTopTouchStart = (e) => {
+                    // 僅允許雙指操作 (拖曳 + 縮放)
                     if (e.touches.length === 2) {
-                        // Pinch Start
                         topMapState.value.isDragging = true;
+
+                        // 1. 計算雙指中心點 (Screen 座標)
+                        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                        
+                        topMapState.value.startX = centerX;
+                        topMapState.value.startY = centerY;
+
+                        // 2. 記錄初始狀態
+                        topMapState.value.initialTranslateX = topTranslateX.value;
+                        topMapState.value.initialTranslateY = topTranslateY.value;
+                        topMapState.value.initialScale = topScale.value;
+
+                        // 3. 計算雙指距離
                         topMapState.value.initialDistance = Math.hypot(
                             e.touches[0].clientX - e.touches[1].clientX,
                             e.touches[0].clientY - e.touches[1].clientY
                         );
-                        topMapState.value.initialScale = topScale.value;
+
+                        // 4. 計算"縮放錨點"在地圖內容中的相對位置 (Content 座標)
+                        // 這是關鍵：我們希望手指下的地圖點，在縮放後依然在手指下
+                        // ContentX = (ScreenX - ContainerLeft - TranslateX) / Scale
+                        // 這裡簡化為相對於 Container 左上角的偏移計算
+                        // 但因為我們是全螢幕操作，直接用 touch clientX 減去 container offset 會更準
+                        const rect = topMapContainer.value.getBoundingClientRect();
+                        const rawX = centerX - rect.left;
+                        const rawY = centerY - rect.top;
+
+                        topMapState.value.anchorInContentX = (rawX - topTranslateX.value) / topScale.value;
+                        topMapState.value.anchorInContentY = (rawY - topTranslateY.value) / topScale.value;
+
                     } else if (e.touches.length === 1) {
-                        // Pan Start (只有在不是拖曳標記且不是新增模式時)
-                        if (!dragData.value.markerId && !isAddingMode.value) {
-                            topMapState.value.isDragging = true;
-                            topMapState.value.startX = e.touches[0].clientX;
-                            topMapState.value.startY = e.touches[0].clientY;
-                            topMapState.value.initialX = topTranslateX.value;
-                            topMapState.value.initialY = topTranslateY.value;
-                        }
+                        // 單指不移動地圖，防止誤觸
+                        // 如果需要單指拖曳標記，那是透過 stopPropagation 在標記上處理的，不會進到這裡
+                        // 所以這裡甚麼都不做
                     }
                 };
 
                 const handleTopTouchMove = (e) => {
-                    // 1. 如果是雙指縮放
-                    if (e.touches.length === 2) {
-                        const dist = Math.hypot(
+                    if (e.touches.length === 2 && topMapState.value.isDragging) {
+                        // 1. 計算新的中心點
+                        const currentCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                        const currentCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                        
+                        // 2. 計算新的距離與縮放比例
+                        const currentDist = Math.hypot(
                             e.touches[0].clientX - e.touches[1].clientX,
                             e.touches[0].clientY - e.touches[1].clientY
                         );
-                        if (topMapState.value.initialDistance === 0) return;
                         
-                        let newScale = topMapState.value.initialScale * (dist / topMapState.value.initialDistance);
-                        // 限制：不可縮小 (min 1)，最大可放至 5 倍
-                        newScale = Math.min(Math.max(1, newScale), 5);
+                        let newScale = topMapState.value.initialScale * (currentDist / topMapState.value.initialDistance);
+                        newScale = Math.min(Math.max(1, newScale), 5); // 限制縮放倍率
                         topScale.value = newScale;
+
+                        // 3. 計算新的位移 (Pan + Zoom Compensation)
+                        // 我們希望：NewTranslate = CurrentCenter - (AnchorInContent * NewScale)
+                        // 這樣就能保證 AnchorInContent 這個點，在縮放後依然位於 CurrentCenter 這個螢幕位置
                         
-                        // 邊界檢查：如果縮回 1 倍，重置位置
-                        if (newScale === 1) {
+                        const rect = topMapContainer.value.getBoundingClientRect();
+                        const rawCurrentX = currentCenterX - rect.left;
+                        const rawCurrentY = currentCenterY - rect.top;
+
+                        topTranslateX.value = rawCurrentX - (topMapState.value.anchorInContentX * newScale);
+                        topTranslateY.value = rawCurrentY - (topMapState.value.anchorInContentY * newScale);
+
+                        // 4. 邊界檢查 (如果縮回 1 倍，強制置中歸零，避免飄移)
+                        if (newScale <= 1.05) {
                             topTranslateX.value = 0;
                             topTranslateY.value = 0;
                         }
                     } 
-                    // 2. 如果是單指拖曳地圖 (且不在拖曳標記中)
-                    else if (e.touches.length === 1 && topMapState.value.isDragging && !dragData.value.isDragging) {
-                        const dx = e.touches[0].clientX - topMapState.value.startX;
-                        const dy = e.touches[0].clientY - topMapState.value.startY;
-                        
-                        // 只有在放大狀態下才允許大幅移動，或是加上阻尼
-                        if (topScale.value > 1) {
-                            topTranslateX.value = topMapState.value.initialX + dx;
-                            topTranslateY.value = topMapState.value.initialY + dy;
-                        } else {
-                            // 未放大時加上強力阻尼，讓使用者感覺拉不動
-                            topTranslateX.value = topMapState.value.initialX + dx * 0.1;
-                            topTranslateY.value = topMapState.value.initialY + dy * 0.1;
-                        }
-                    }
                     
-                    // 3. 處理標記拖曳 (放在這裡是因為事件冒泡可能被擋)
+                    // 標記拖曳事件 (如果正在拖曳標記，繼續處理)
                     if (dragData.value.isDragging && e.touches.length === 1) {
                          handleMapDragMove(e);
                     }
@@ -630,22 +652,19 @@
 
                 const handleTopTouchEnd = (e) => {
                     topMapState.value.isDragging = false;
-                    topMapState.value.initialDistance = 0;
                     
-                    // 如果縮放比例回到 1，強制歸零位移
                     if (topScale.value <= 1.05) {
                         topScale.value = 1;
                         topTranslateX.value = 0;
                         topTranslateY.value = 0;
                     }
 
-                    // 標記拖曳結束處理
                     if (dragData.value.isDragging) {
                         handleMapDragEnd(e);
                     }
                 };
 
-                // Mouse events for desktop testing compatibility
+                // Mouse events (for desktop debugging - keeping simple pan)
                 const handleTopMouseDown = (e) => {
                     if (dragData.value.markerId || isAddingMode.value) return;
                     topMapState.value.isDragging = true;
@@ -693,7 +712,7 @@
                     showTypeSelector.value = false;
                 };
 
-                // 計算座標的核心函數 (將螢幕座標轉換為地圖內的 % 座標)
+                // 計算座標的核心函數
                 const getMapPercentFromEvent = (clientX, clientY) => {
                     const rect = topMapContainer.value.getBoundingClientRect();
                     
@@ -736,11 +755,10 @@
                     longPressTimer = setTimeout(() => {
                         dragData.value.isDragging = true;
                         longPressTimer = null;
-                    }, 300); // 稍微增加長按時間避免與縮放衝突
+                    }, 300);
                 };
 
                 const handleMapDragMove = (e) => {
-                    // 如果不是長按拖曳狀態，這段是用來檢測是否取消長按計時器
                     if (!dragData.value.isDragging && longPressTimer) {
                         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -754,13 +772,11 @@
                     }
 
                     if (dragData.value.isDragging) {
-                        // e.preventDefault(); // 註解掉，由 touch-action: none 控制
                         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                         
                         const { x, y } = getMapPercentFromEvent(clientX, clientY);
                         
-                        // 限制在 0-100%
                         const newX = Math.max(0, Math.min(100, x));
                         const newY = Math.max(0, Math.min(100, y));
 
@@ -777,7 +793,6 @@
                         clearTimeout(longPressTimer);
                         longPressTimer = null;
                         
-                        // 如果只是短按（沒觸發拖曳），則視為點擊，開啟 Modal
                         if (!isAddingMode.value && dragData.value.markerId) {
                             const marker = markers.value.find(m => m.id === dragData.value.markerId);
                             if (marker) openMarkerModal(marker);
@@ -956,3 +971,5 @@
     </script>
 </body>
 </html>
+
+
